@@ -8,7 +8,7 @@ import { formatCurrency, toTitleCase } from "../lib/formatters";
 export default function ActivityCard({ activity, onAdd }) {
   return (
     <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:shadow-lg transition-shadow duration-200">
-      <div className="h-28 w-full bg-gradient-to-br from-violet-300 to-sky-400 dark:from-violet-700 dark:to-sky-700">
+      <div className="h-28 w-full bg-gradient-to-br from-violet-300 to-sky-400 dark:!from-violet-700 dark:!to-sky-700">
         {activity.image_url && (
           <img src={activity.image_url} alt={activity.name} className="h-full w-full object-cover" />
         )}

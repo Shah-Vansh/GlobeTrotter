@@ -194,7 +194,7 @@ export default function TripDetail() {
 
       {/* --- Hero / summary card --- */}
       <div ref={heroRef} className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden">
-        <div className="h-40 bg-gradient-to-br from-sky-400 to-emerald-400 dark:from-sky-700 dark:to-emerald-700">
+        <div className="h-40 bg-gradient-to-br from-sky-400 to-emerald-400 dark:!from-sky-700 dark:!to-emerald-700">
           {trip.cover_photo_url && <img src={trip.cover_photo_url} alt={trip.name} className="h-full w-full object-cover" />}
         </div>
         <div className="p-5 space-y-3">

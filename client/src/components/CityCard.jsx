@@ -12,7 +12,7 @@ export default function CityCard({ city, onSelect }) {
       onClick={() => onSelect?.(city)}
       className="text-left group overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
     >
-      <div className="h-28 w-full bg-gradient-to-br from-amber-300 to-rose-400 dark:from-amber-700 dark:to-rose-700">
+      <div className="h-28 w-full bg-gradient-to-br from-amber-300 to-rose-400 dark:!from-amber-700 dark:!to-rose-700">
         {city.image_url && (
           <img src={city.image_url} alt={city.name} className="h-full w-full object-cover" />
         )}

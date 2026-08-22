@@ -14,7 +14,7 @@ export default function TripCard({ trip }) {
       to={`/trips/${trip.id}`}
       className="group block overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
     >
-      <div className="h-32 w-full bg-gradient-to-br from-sky-400 to-emerald-400 dark:from-sky-700 dark:to-emerald-700 relative">
+      <div className="h-32 w-full bg-gradient-to-br from-sky-400 to-emerald-400 dark:!from-sky-700 dark:!to-emerald-700 relative">
         {trip.cover_photo_url && (
           <img src={trip.cover_photo_url} alt={trip.name} className="h-full w-full object-cover" />
         )}
