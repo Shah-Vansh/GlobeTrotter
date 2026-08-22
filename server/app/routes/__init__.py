@@ -18,6 +18,7 @@ def register_blueprints(app):
     from app.routes.calendar import calendar_bp
     from app.routes.admin import admin_bp
     from app.routes.export import export_bp
+    from app.routes.dashboard import dashboard_bp
 
     app.register_blueprint(health_bp, url_prefix="/api/health")
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
@@ -30,3 +31,4 @@ def register_blueprints(app):
     app.register_blueprint(calendar_bp, url_prefix="/api/calendar")
     app.register_blueprint(admin_bp, url_prefix="/api/admin")
     app.register_blueprint(export_bp, url_prefix="/api/export")
+    app.register_blueprint(dashboard_bp, url_prefix="/api/dashboard")

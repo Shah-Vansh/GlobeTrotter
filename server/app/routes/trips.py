@@ -262,12 +262,24 @@ def get_budget(trip_id):
     trip_days = max((trip.end_date - trip.start_date).days + 1, 1)
     average_per_day = round(trip.total_budget / trip_days, 2)
 
+    # Overbudget alerts: flag days whose spend exceeds a per-day threshold.
+    # Uses ?daily_budget= if supplied, otherwise the trip's own average per day.
+    daily_budget = request.args.get("daily_budget", type=float)
+    threshold = daily_budget if daily_budget is not None else average_per_day
+    overbudget_days = [
+        {"day": day, "amount": amount, "over_by": round(amount - threshold, 2)}
+        for day, amount in sorted(by_day.items())
+        if threshold > 0 and amount > threshold
+    ]
+
     return success(
         {
             "total_budget": trip.total_budget,
             "average_cost_per_day": average_per_day,
+            "daily_budget_threshold": threshold,
             "by_category": by_category,
             "by_day": by_day,
+            "overbudget_days": overbudget_days,
         }
     )
 

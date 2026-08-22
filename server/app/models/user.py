@@ -31,8 +31,9 @@ class User(db.Model):
     additional_info = db.Column(db.Text, nullable=True)
     profile_photo_url = db.Column(db.String(500), nullable=True)
 
-    # --- Preferences (persisted per-user, e.g. theme) ---
+    # --- Preferences (persisted per-user, e.g. theme, language) ---
     theme_preference = db.Column(db.String(10), default="light")  # "light" | "dark"
+    language = db.Column(db.String(10), default="en")  # ISO code, e.g. "en", "hi", "fr"
 
     # --- Access control ---
     is_admin = db.Column(db.Boolean, default=False, nullable=False)
@@ -75,6 +76,7 @@ class User(db.Model):
             "country": self.country,
             "is_admin": self.is_admin,
             "theme_preference": self.theme_preference,
+            "language": self.language,
         }
         if include_private:
             data.update(

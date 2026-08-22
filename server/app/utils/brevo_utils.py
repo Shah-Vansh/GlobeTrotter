@@ -58,6 +58,19 @@ def send_welcome_email(user) -> bool:
     return send_email(user.email, f"{user.first_name} {user.last_name}", subject, html_content)
 
 
+def send_password_reset_email(user, reset_url: str) -> bool:
+    """Convenience wrapper: password-reset link for the "Forgot Password" flow."""
+    subject = "Reset your GlobeTrotter password"
+    html_content = f"""
+        <h2>Hi {user.first_name},</h2>
+        <p>We received a request to reset your GlobeTrotter password.</p>
+        <p>Click the link below to choose a new one. This link expires in 30 minutes:</p>
+        <p><a href="{reset_url}">Reset my password</a></p>
+        <p>If you didn't request this, you can safely ignore this email.</p>
+    """
+    return send_email(user.email, f"{user.first_name} {user.last_name}", subject, html_content)
+
+
 def send_trip_shared_email(to_email: str, to_name: str, share_url: str) -> bool:
     """Convenience wrapper: notify someone a trip was shared with them."""
     subject = "A GlobeTrotter itinerary was shared with you"
