@@ -35,7 +35,7 @@ def update_profile():
     data = request.json or {}
     editable_fields = [
         "first_name", "last_name", "phone_number", "city",
-        "country", "additional_info",
+        "country", "additional_info", "language",
     ]
     for field in editable_fields:
         if field in data:
@@ -79,6 +79,19 @@ def update_theme():
     user.theme_preference = theme
     db.session.commit()
     return success({"theme_preference": user.theme_preference}, message="Theme preference saved.")
+
+
+@users_bp.route("/me/language", methods=["PUT"])
+@jwt_required()
+def update_language():
+    """PUT /api/users/me/language - persist the user's preferred language (Settings screen)."""
+    user = get_current_user()
+    language = (request.json or {}).get("language")
+    if not language or not isinstance(language, str) or len(language) > 10:
+        return error("language must be a valid ISO code, e.g. 'en'.", 400)
+    user.language = language.lower()
+    db.session.commit()
+    return success({"language": user.language}, message="Language preference saved.")
 
 
 @users_bp.route("/me", methods=["DELETE"])
