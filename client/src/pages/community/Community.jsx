@@ -89,9 +89,12 @@ export default function Community() {
       </div>
 
       {/* Composer */}
-      <form onSubmit={handleShare} className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-start gap-3">
+      <form
+        onSubmit={handleShare}
+        className="rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm p-4 flex items-start gap-3"
+      >
         {currentUser?.profile_photo_url ? (
-          <img src={currentUser.profile_photo_url} alt="" className="h-9 w-9 rounded-full object-cover shrink-0" />
+          <img src={currentUser.profile_photo_url} alt="" className="h-9 w-9 rounded-full object-cover shrink-0 ring-2 ring-sky-100 dark:ring-sky-900/50" />
         ) : (
           <UserCircle size={36} className="text-slate-300 shrink-0" />
         )}
@@ -100,9 +103,13 @@ export default function Community() {
             value={newPost}
             onChange={(e) => setNewPost(e.target.value)}
             placeholder="Share a travel experience or recommendation..."
-            className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+            className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-3.5 py-2.5 text-sm outline-none transition-all duration-200 placeholder:text-slate-400 focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 hover:border-slate-300 dark:hover:border-slate-600"
           />
-          <button type="submit" disabled={posting || !newPost.trim()} className="inline-flex items-center gap-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-3 py-2 disabled:opacity-50">
+          <button
+            type="submit"
+            disabled={posting || !newPost.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-sm font-semibold px-4 py-2.5 shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+          >
             <Send size={14} /> Share
           </button>
         </div>
@@ -181,10 +188,10 @@ function PostCard({ post, onLike }) {
   };
 
   return (
-    <article className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4">
+    <article className="rounded-2xl border border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-sm hover:shadow-md transition-shadow duration-300 p-4">
       <div className="flex items-center gap-3 mb-2">
         {post.user?.profile_photo_url ? (
-          <img src={post.user.profile_photo_url} alt="" className="h-9 w-9 rounded-full object-cover" />
+          <img src={post.user.profile_photo_url} alt="" className="h-9 w-9 rounded-full object-cover ring-2 ring-sky-100 dark:ring-sky-900/50" />
         ) : (
           <UserCircle size={36} className="text-slate-300" />
         )}
@@ -193,13 +200,13 @@ function PostCard({ post, onLike }) {
           <p className="text-xs text-slate-400">{formatDate(post.created_at)}</p>
         </div>
         {post.category && (
-          <span className="ml-auto text-xs rounded-full bg-sky-50 dark:bg-sky-900/40 text-sky-700 dark:text-sky-300 px-2 py-0.5">
+          <span className="ml-auto text-xs font-medium rounded-full bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-sky-900/40 dark:to-indigo-900/40 text-sky-700 dark:text-sky-300 px-2.5 py-1 border border-sky-100 dark:border-sky-800/50">
             {post.category}
           </span>
         )}
       </div>
       <p className="text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{post.content}</p>
-      {post.image_url && <img src={post.image_url} alt="" className="mt-3 rounded-lg max-h-72 w-full object-cover" />}
+      {post.image_url && <img src={post.image_url} alt="" className="mt-3 rounded-xl max-h-72 w-full object-cover" />}
 
       <div className="flex items-center gap-4 mt-3 text-xs text-slate-500 dark:text-slate-400">
         <button
@@ -208,7 +215,7 @@ function PostCard({ post, onLike }) {
         >
           <Heart size={14} fill={post.is_liked_by_me ? "currentColor" : "none"} /> {post.like_count}
         </button>
-        <button onClick={toggleComments} className="flex items-center gap-1.5 hover:text-sky-600 dark:hover:text-sky-400">
+        <button onClick={toggleComments} className="flex items-center gap-1.5 hover:text-sky-600 dark:hover:text-sky-400 transition-colors">
           <MessageCircle size={14} /> {commentCount}
           {commentsOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
         </button>
@@ -227,7 +234,7 @@ function PostCard({ post, onLike }) {
                   ) : (
                     <UserCircle size={28} className="text-slate-300 shrink-0" />
                   )}
-                  <div className="min-w-0 rounded-lg bg-slate-50 dark:bg-slate-800 px-3 py-1.5 flex-1">
+                  <div className="min-w-0 rounded-xl bg-slate-50 dark:bg-slate-800 px-3 py-1.5 flex-1">
                     <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{c.user?.full_name || "GlobeTrotter user"}</p>
                     <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap">{c.content}</p>
                   </div>
@@ -243,12 +250,12 @@ function PostCard({ post, onLike }) {
               value={commentText}
               onChange={(e) => setCommentText(e.target.value)}
               placeholder="Write a comment..."
-              className="flex-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-sky-500"
+              className="flex-1 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-3 py-1.5 text-sm outline-none transition-all duration-200 focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 hover:border-slate-300 dark:hover:border-slate-600"
             />
             <button
               type="submit"
               disabled={submittingComment || !commentText.trim()}
-              className="inline-flex items-center gap-1 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-medium px-3 py-1.5 disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-xs font-semibold px-3 py-1.5 shadow-md shadow-sky-500/20 transition-all duration-300 disabled:opacity-50 disabled:shadow-none"
             >
               <Send size={12} /> Post
             </button>

@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Map } from "lucide-react";
+import { Plus, Map, ArrowRight, Clock3, CalendarClock, CheckCircle2 } from "lucide-react";
 import toast from "react-hot-toast";
 import api from "../../configs/api";
 import { useBreadcrumb } from "../../lib/useBreadcrumb";
@@ -17,9 +17,9 @@ import EmptyState from "../../components/EmptyState";
 import Loader from "../../components/Loader";
 
 const SECTIONS = [
-  { key: "ongoing", label: "Ongoing" },
-  { key: "upcoming", label: "Upcoming" },
-  { key: "completed", label: "Completed" },
+  { key: "ongoing", label: "Ongoing", icon: Clock3 },
+  { key: "upcoming", label: "Upcoming", icon: CalendarClock },
+  { key: "completed", label: "Completed", icon: CheckCircle2 },
 ];
 
 export default function TripsList() {
@@ -58,9 +58,9 @@ export default function TripsList() {
         </div>
         <button
           onClick={() => navigate("/trips/new")}
-          className="inline-flex items-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-4 py-2 self-start"
+          className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-sm font-semibold px-4 py-2.5 self-start shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 transition-all duration-300"
         >
-          <Plus size={16} /> Plan a Trip
+          <Plus size={16} className="transition-transform group-hover:rotate-90 duration-300" /> Plan a Trip
         </button>
       </div>
 
@@ -87,20 +87,24 @@ export default function TripsList() {
           action={
             <button
               onClick={() => navigate("/trips/new")}
-              className="rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-4 py-2"
+              className="group inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-sm font-semibold px-5 py-2.5 shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 transition-all duration-300"
             >
               Plan a Trip
+              <ArrowRight size={15} className="transition-transform group-hover:translate-x-1" />
             </button>
           }
         />
       ) : (
-        SECTIONS.map(({ key, label }) => (
+        SECTIONS.map(({ key, label, icon: Icon }) => (
           <section key={key} className="space-y-3">
-            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/25">
+                <Icon size={16} />
+              </span>
               {label} <span className="text-sm font-normal text-slate-400">({groups[key].length})</span>
             </h2>
             {groups[key].length === 0 ? (
-              <p className="text-sm text-slate-400 dark:text-slate-500">No {label.toLowerCase()} trips.</p>
+              <p className="text-sm text-slate-400 dark:text-slate-500 pl-10">No {label.toLowerCase()} trips.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {groups[key].map((trip) => (

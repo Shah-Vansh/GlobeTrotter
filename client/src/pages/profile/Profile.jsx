@@ -93,7 +93,8 @@ export default function Profile() {
 
   if (!user) return <Loader fullScreen />;
 
-  const inputClass = "w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-sky-500";
+  const inputClass =
+    "w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 px-3.5 py-2.5 text-sm outline-none transition-all duration-200 placeholder:text-slate-400 focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 focus:shadow-[0_0_0_4px_rgba(14,165,233,0.1)] hover:border-slate-300 dark:hover:border-slate-600";
 
   return (
     <div className="max-w-2xl mx-auto space-y-8">
@@ -102,10 +103,12 @@ export default function Profile() {
         <p className="text-sm text-slate-500 dark:text-slate-400">Manage your personal information and preferences.</p>
       </div>
 
-      <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 space-y-6">
-        <div className="flex items-center gap-4">
-          <label className="relative cursor-pointer group">
-            <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-sky-50 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400">
+      <div className="relative overflow-hidden rounded-3xl border border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl shadow-xl p-6 space-y-6">
+        <div className="absolute -top-24 -right-24 w-56 h-56 bg-sky-100/40 dark:bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative flex items-center gap-4">
+          <label className="relative cursor-pointer group shrink-0">
+            <span className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-sky-500 to-indigo-600 text-white shadow-lg shadow-sky-500/25">
               {user.profile_photo_url ? (
                 <img src={user.profile_photo_url} alt="" className="h-full w-full object-cover" />
               ) : (
@@ -113,7 +116,7 @@ export default function Profile() {
               )}
             </span>
             <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" disabled={uploadingPhoto} />
-            <span className="absolute -bottom-1 -right-1 rounded-full bg-sky-600 text-white text-[10px] px-1.5 py-0.5 group-hover:bg-sky-700">
+            <span className="absolute -bottom-1 -right-1 rounded-full bg-sky-600 text-white text-[10px] px-1.5 py-0.5 group-hover:bg-sky-700 transition-colors">
               {uploadingPhoto ? "..." : "Edit"}
             </span>
           </label>
@@ -123,37 +126,41 @@ export default function Profile() {
           </div>
         </div>
 
-        <form onSubmit={handleSave} className="space-y-4">
+        <form onSubmit={handleSave} className="relative space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">First Name</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">First Name</label>
               <input value={form.first_name} onChange={handleChange("first_name")} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Last Name</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Last Name</label>
               <input value={form.last_name} onChange={handleChange("last_name")} className={inputClass} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Phone Number</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Phone Number</label>
               <input value={form.phone_number} onChange={handleChange("phone_number")} className={inputClass} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">City</label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">City</label>
               <input value={form.city} onChange={handleChange("city")} className={inputClass} />
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Country</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Country</label>
             <input value={form.country} onChange={handleChange("country")} className={inputClass} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1">Additional Information</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-200 mb-1.5">Additional Information</label>
             <textarea rows={3} value={form.additional_info} onChange={handleChange("additional_info")} className={inputClass} />
           </div>
           <div className="flex justify-end">
-            <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-sm font-medium px-4 py-2 disabled:opacity-60">
+            <button
+              type="submit"
+              disabled={saving}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white text-sm font-semibold px-5 py-2.5 shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 transition-all duration-300 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
               <Save size={15} /> {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
@@ -162,7 +169,10 @@ export default function Profile() {
 
       <section className="space-y-3">
         <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-          <Heart size={17} className="text-rose-500" /> Saved Destinations
+          <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-rose-400 to-rose-600 text-white shadow-md shadow-rose-500/25">
+            <Heart size={16} fill="currentColor" />
+          </span>
+          Saved Destinations
         </h2>
         {loadingSaved ? (
           <Loader label="Loading saved destinations..." />
@@ -171,11 +181,17 @@ export default function Profile() {
         ) : (
           <ul className="space-y-2">
             {saved.map((s) => (
-              <li key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 px-3 py-2 text-sm">
+              <li
+                key={s.id}
+                className="flex items-center justify-between rounded-xl border border-slate-200/60 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl px-4 py-2.5 text-sm shadow-sm hover:shadow-md transition-shadow duration-300"
+              >
                 <span className="flex items-center gap-2 text-slate-700 dark:text-slate-200">
                   <MapPin size={14} className="text-sky-500" /> {s.city?.name}, {s.city?.country}
                 </span>
-                <button onClick={() => removeSaved(s.id)} className="text-slate-400 hover:text-rose-500">
+                <button
+                  onClick={() => removeSaved(s.id)}
+                  className="text-slate-400 hover:text-rose-500 transition-colors p-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                >
                   <Trash2 size={15} />
                 </button>
               </li>
