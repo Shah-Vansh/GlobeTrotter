@@ -18,7 +18,7 @@ import CityCard from "../components/CityCard";
 import TripCard from "../components/TripCard";
 import EmptyState from "../components/EmptyState";
 import Loader from "../components/Loader";
-import { Map as MapIcon, Building2 } from "lucide-react";
+import { Map as MapIcon, Building2, Globe2 } from "lucide-react";
 
 export default function Dashboard() {
   useBreadcrumb([{ label: "Dashboard" }]);
@@ -116,6 +116,28 @@ export default function Dashboard() {
           <Loader label="Finding great destinations..." />
         ) : cities.length === 0 ? (
           <EmptyState icon={Building2} title="No destinations found" description="Try a different search or filter." />
+        ) : groupBy ? (
+          // Grouped view: bucket cities by the selected field (region/country)
+          // and render each group under its own heading.
+          Object.entries(
+            cities.reduce((groups, city) => {
+              const key = city[groupBy] || "Other";
+              (groups[key] = groups[key] || []).push(city);
+              return groups;
+            }, {})
+          ).map(([groupLabel, groupCities]) => (
+            <div key={groupLabel} className="space-y-2">
+              <h3 className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 dark:text-slate-400">
+                <Globe2 size={14} /> {groupLabel}
+                <span className="font-normal text-slate-400">({groupCities.length})</span>
+              </h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                {groupCities.map((city) => (
+                  <CityCard key={city.id} city={city} onSelect={() => navigate("/search/cities")} />
+                ))}
+              </div>
+            </div>
+          ))
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
             {cities.map((city) => (

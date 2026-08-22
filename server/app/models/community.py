@@ -28,7 +28,7 @@ class CommunityPost(db.Model):
         "CommunityLike", backref="post", lazy=True, cascade="all, delete-orphan"
     )
 
-    def to_dict(self) -> dict:
+    def to_dict(self, viewer_id=None) -> dict:
         return {
             "id": self.id,
             "user": self.author.to_dict() if self.author else None,
@@ -38,6 +38,9 @@ class CommunityPost(db.Model):
             "category": self.category,
             "comment_count": len(self.comments),
             "like_count": len(self.likes),
+            # Lets the frontend render a filled heart for posts the current
+            # viewer has already liked, without a second round-trip.
+            "is_liked_by_me": bool(viewer_id) and any(l.user_id == viewer_id for l in self.likes),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
 

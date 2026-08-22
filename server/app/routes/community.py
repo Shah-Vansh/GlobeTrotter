@@ -4,7 +4,7 @@ Feed of shared trip experiences with search/filter/sort/group, plus
 comment and like interactions (Community Page spec).
 """
 from flask import Blueprint, request
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 
 from app.extensions import db
 from app.models import CommunityPost, CommunityComment, CommunityLike
@@ -13,9 +13,24 @@ from app.utils.responses import success, error
 community_bp = Blueprint("community", __name__)
 
 
+def _current_user_id_optional():
+    """Best-effort viewer id: returns None for anonymous/invalid tokens
+    instead of raising, so the public feed still renders for guests.
+    JWT identities are stored as strings (see auth.py's create_access_token
+    calls), so this converts back to int for comparison against
+    CommunityLike.user_id."""
+    try:
+        verify_jwt_in_request(optional=True)
+        identity = get_jwt_identity()
+        return int(identity) if identity is not None else None
+    except Exception:
+        return None
+
+
 @community_bp.route("/posts", methods=["GET"])
 def list_posts():
     """GET /api/community/posts?search=&category=&sort_by=recent|popular&group_by=category"""
+    viewer_id = _current_user_id_optional()
     query = CommunityPost.query
 
     search = request.args.get("search")
@@ -37,10 +52,10 @@ def list_posts():
     if group_by == "category":
         groups = {}
         for p in posts:
-            groups.setdefault(p.category or "General", []).append(p.to_dict())
+            groups.setdefault(p.category or "General", []).append(p.to_dict(viewer_id))
         return success({"groups": groups})
 
-    return success([p.to_dict() for p in posts])
+    return success([p.to_dict(viewer_id) for p in posts])
 
 
 @community_bp.route("/posts", methods=["POST"])
@@ -68,7 +83,7 @@ def create_post():
     )
     db.session.add(post)
     db.session.commit()
-    return success(post.to_dict(), message="Post shared.", status_code=201)
+    return success(post.to_dict(viewer_id=user_id), message="Post shared.", status_code=201)
 
 
 @community_bp.route("/posts/<int:post_id>", methods=["DELETE"])
