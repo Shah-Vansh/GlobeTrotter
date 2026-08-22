@@ -57,7 +57,13 @@ class Trip(db.Model):
         total = 0.0
         for stop in self.stops:
             for entry in stop.itinerary_activities:
-                total += entry.cost if entry.cost is not None else 0.0
+                if entry.cost is not None:
+                    total += entry.cost
+                elif entry.activity is not None:
+                    # Fall back to the activity's base cost when this entry
+                    # hasn't been given its own override (keeps this in sync
+                    # with the /budget breakdown endpoint's logic).
+                    total += entry.activity.cost or 0.0
         return round(total, 2)
 
     @property
