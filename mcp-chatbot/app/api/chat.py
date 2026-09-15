@@ -1,8 +1,8 @@
 """
 Chat API routes.
 
-- POST /api/chat/test  – Phase 3: LLM only (no tools)
-- POST /api/chat       – Phase 4: full agent (LLM + MCP tools → GlobeTrotter APIs)
+- POST /api/chat       – full agent (LLM + tools), optional Bearer JWT
+- POST /api/chat/test  – LLM only (no tools)
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from typing import Any, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.agent.agent import get_agent
@@ -23,15 +23,16 @@ router = APIRouter()
 
 SYSTEM_PROMPT_TEST = (
     "You are the GlobeTrotter travel assistant. "
-    "You help users plan trips using the GlobeTrotter application. "
     "Be concise, friendly, and accurate. "
-    "Do not invent booking, payment, or other features that do not exist."
+    "Do not invent booking or payment features."
 )
 
 
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: Optional[str] = None
+    # Optional body token (prefer Authorization header)
+    access_token: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -46,24 +47,39 @@ class ChatResponse(BaseModel):
     error: Optional[str] = None
 
 
-@router.post("/chat", response_model=ChatResponse, tags=["chat"])
-async def chat(body: ChatRequest):
-    """
-    Phase 4 agent endpoint.
+def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
+    if not authorization:
+        return None
+    parts = authorization.split(" ", 1)
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1].strip() or None
+    return None
 
-    Flow:
-      User message
-        → Groq (tool schemas)
-        → optional tool calls (search_destinations, search_activities, …)
-        → existing GlobeTrotter APIs
-        → final natural-language reply
+
+@router.post("/chat", response_model=ChatResponse, tags=["chat"])
+async def chat(
+    body: ChatRequest,
+    authorization: Optional[str] = Header(default=None),
+):
+    """
+    Full agent endpoint.
+
+    Send the user's GlobeTrotter JWT as:
+      Authorization: Bearer <access_token>
+    or in the body as access_token.
+
+    Without a token, only public tools (destinations/activities) work.
+    Trip/itinerary tools require a valid token with the same privileges
+    as the frontend user.
     """
     request_id = f"req_{uuid.uuid4().hex[:8]}"
+    token = _extract_bearer(authorization) or body.access_token
 
     logger.info(
-        "REQUEST_START request_id=%s conversation_id=%s message=%s",
+        "REQUEST_START request_id=%s conversation_id=%s authenticated=%s message=%s",
         request_id,
         body.conversation_id or "(new)",
+        bool(token),
         body.message[:120],
     )
 
@@ -72,6 +88,7 @@ async def chat(body: ChatRequest):
         body.message,
         conversation_id=body.conversation_id,
         request_id=request_id,
+        access_token=token,
     )
 
     if not result.success:
@@ -111,21 +128,11 @@ async def chat(body: ChatRequest):
 
 @router.post("/chat/test", response_model=ChatResponse, tags=["chat"])
 async def chat_test(body: ChatRequest):
-    """
-    Phase 3 smoke-test: Groq only, no tools.
-    Kept for debugging LLM connectivity.
-    """
+    """Phase 3 smoke-test: Groq only, no tools."""
     request_id = f"req_{uuid.uuid4().hex[:8]}"
     conversation_id = body.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
 
-    logger.info(
-        "REQUEST_START (test) request_id=%s message=%s",
-        request_id,
-        body.message[:120],
-    )
-
     llm = get_llm_service()
-
     try:
         result = await llm.chat(
             messages=[{"role": "user", "content": body.message}],
@@ -133,14 +140,9 @@ async def chat_test(body: ChatRequest):
             request_id=request_id,
         )
     except LLMServiceError as exc:
-        logger.error("REQUEST_FAILED request_id=%s error=%s", request_id, str(exc))
         raise HTTPException(
             status_code=502,
-            detail={
-                "success": False,
-                "request_id": request_id,
-                "error": str(exc),
-            },
+            detail={"success": False, "request_id": request_id, "error": str(exc)},
         ) from exc
 
     return ChatResponse(
