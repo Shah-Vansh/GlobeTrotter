@@ -7,150 +7,140 @@ Natural-language interface over the existing GlobeTrotter application using **MC
 ## Architecture Summary
 
 ```
-User → Chat UI → FastAPI Chat API → AI Agent (Groq / gpt-oss-120b)
-                                          ↓
-                                    MCP Client
-                                          ↓
-                                    MCP Server + Tools
+User → Chat UI → FastAPI /api/chat → Agent (Groq / gpt-oss-120b)
+                                          ↓ tool schemas
+                                   Tool implementations
                                           ↓
                               Existing GlobeTrotter APIs
                                           ↓
                                    Existing Backend + DB
 ```
 
+(Same tool functions also power the standalone MCP server in `app/mcp/server.py`.)
+
 ## Development Branch
 
-All work for this feature happens exclusively on the **`dev`** branch.
+All work happens exclusively on the **`dev`** branch.
 
 ## Project Structure
 
 ```
 mcp-chatbot/
 ├── app/
-│   ├── api/
-│   │   └── chat.py           # /api/chat/test (Phase 3)
-│   ├── agent/                # (Phase 4+)
-│   ├── mcp/
-│   │   ├── server.py         # FastMCP server (Phase 2)
-│   │   └── client.py         # MCP client for testing
-│   ├── tools/
-│   │   ├── destinations.py
-│   │   └── activities.py
-│   ├── services/
-│   │   ├── globetrotter_service.py
-│   │   └── llm_service.py    # Groq client (Phase 3)
-│   └── utils/
-│       └── logger.py
-├── scripts/
-│   └── test_llm.py           # CLI smoke-test for Groq
-├── docs/
-│   └── CAPABILITY_MATRIX.md
-├── logs/
-├── .env.example
-├── requirements.txt
-└── README.md
+│   ├── api/chat.py              # POST /api/chat (agent) + /api/chat/test
+│   ├── agent/
+│   │   ├── agent.py             # Agentic tool-calling loop (Phase 4)
+│   │   ├── tools_schema.py      # OpenAI/Groq tool definitions
+│   │   ├── prompts.py
+│   │   └── state.py             # In-memory conversation state
+│   ├── mcp/server.py + client.py
+│   ├── tools/destinations.py + activities.py
+│   ├── services/globetrotter_service.py + llm_service.py
+│   └── utils/logger.py
+├── scripts/test_llm.py + test_agent.py
+├── docs/CAPABILITY_MATRIX.md
+└── ...
 ```
 
-## Capability Matrix
+## Implemented tools
 
-See `docs/CAPABILITY_MATRIX.md`.
+| Tool name                 | Backend API                | Status |
+|---------------------------|----------------------------|--------|
+| `search_destinations`     | `GET /api/cities`          | ✅     |
+| `get_destination_details` | `GET /api/cities/{id}`     | ✅     |
+| `search_activities`       | `GET /api/activities`      | ✅     |
+| `get_activity_details`    | `GET /api/activities/{id}` | ✅     |
 
-**Implemented MCP tools (Phase 2):**
-
-| MCP Tool                        | Backend API                | Status |
-|---------------------------------|----------------------------|--------|
-| `search_destinations_tool`      | `GET /api/cities`          | ✅     |
-| `get_destination_details_tool`  | `GET /api/cities/{id}`     | ✅     |
-| `search_activities_tool`        | `GET /api/activities`      | ✅     |
-| `get_activity_details_tool`     | `GET /api/activities/{id}` | ✅     |
-
-## Environment Variables
+## Environment
 
 ```bash
 cp .env.example .env
+# GROQ_API_KEY=...
+# GROQ_MODEL=openai/gpt-oss-120b
+# GLOBETROTTER_API_URL=http://localhost:5000
 ```
 
-Required for Phase 3:
+## Phases
 
-```
-GROQ_API_KEY=your_groq_api_key
-GROQ_MODEL=openai/gpt-oss-120b
-GLOBETROTTER_API_URL=http://localhost:5000
-```
+- [x] Phase 0 – Audit
+- [x] Phase 1 – Foundation + Logging
+- [x] Phase 2 – MCP Server + real tools
+- [x] Phase 3 – Groq integration
+- [x] **Phase 4 – LLM + tool calling**
+- [ ] Phase 5 – Full API → MCP tools (trips, itinerary, auth…)
+- [ ] Phase 6 – Richer multi-tool workflows
+- [ ] Phase 7 – Durable memory
+- [ ] Phase 8 – Observability polish
+- [ ] Phase 9 – Frontend Chat UI
+- [ ] Phase 10 – Testing & production readiness
 
-## Development Phases (Current Status)
+## How to run Phase 4
 
-- [x] **Phase 0** – Audit existing APIs & create capability matrix
-- [x] **Phase 1** – Foundation + Logging
-- [x] **Phase 2** – MCP Server foundation (real tools → existing APIs)
-- [x] **Phase 3** – Groq + gpt-oss-120b integration (request / response / tokens / latency / errors)
-- [ ] **Phase 4** – LLM + MCP tool calling
-- [ ] **Phase 5** – Full API → MCP tool mapping (trips, itinerary, …)
-- [ ] **Phase 6** – Agentic multi-tool workflows
-- [ ] **Phase 7** – Conversation memory / state
-- [ ] **Phase 8** – Full observability
-- [ ] **Phase 9** – Frontend Chat UI integration
-- [ ] **Phase 10** – Testing, security, production readiness
+### Prerequisites
 
-## Running
+1. GlobeTrotter Flask backend on `:5000` (seeded data recommended)
+2. `GROQ_API_KEY` in `.env`
 
-### 1. Install
+### Install & start API
 
 ```bash
 cd mcp-chatbot
-python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env
-# Set GROQ_API_KEY and GLOBETROTTER_API_URL
-```
-
-### 2. Health check
-
-```bash
 uvicorn app.main:app --reload --port 8001
-# → http://127.0.0.1:8001/health
 ```
 
-### 3. Test Groq LLM (Phase 3) – CLI
+### CLI agent test
 
 ```bash
-python -m scripts.test_llm
-python -m scripts.test_llm "Suggest a 3-day beach destination in India"
+python -m scripts.test_agent
+python -m scripts.test_agent "Find beach destinations related to Goa"
+python -m scripts.test_agent "Show highly rated activities"
 ```
 
-You will see the model reply plus:
+### HTTP agent test
 
+```bash
+curl -X POST http://127.0.0.1:8001/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Search for destinations in India and suggest a few activities"}'
 ```
-request_id, latency, input_tokens, output_tokens, total_tokens
+
+Example response fields:
+
+```json
+{
+  "success": true,
+  "request_id": "req_…",
+  "conversation_id": "conv_…",
+  "reply": "…natural language summary…",
+  "model": "openai/gpt-oss-120b",
+  "latency_seconds": 2.14,
+  "usage": { "input_tokens": …, "output_tokens": …, "total_tokens": … },
+  "tool_calls_made": [
+    { "tool": "search_destinations", "arguments": {"search": "India"}, "success": true }
+  ]
+}
 ```
 
-Logs also appear in the terminal and under `logs/ai.log`.
+Pass the same `conversation_id` on follow-up messages to keep context.
 
-### 4. Test Groq LLM (Phase 3) – HTTP
+### LLM-only test (no tools)
 
 ```bash
 curl -X POST http://127.0.0.1:8001/api/chat/test \
   -H "Content-Type: application/json" \
-  -d '{"message": "Hello, what can you help me with?"}'
+  -d '{"message": "Hello"}'
 ```
 
-### 5. Test MCP tools only (Phase 2, no LLM)
+## Logging
 
-```bash
-# Ensure GlobeTrotter Flask backend is running on :5000
-python -m app.mcp.client
-```
-
-## Logging (Phase 3)
-
-Every LLM call logs:
+Agent loop emits:
 
 ```
-LLM_REQUEST  request_id=… provider=groq model=openai/gpt-oss-120b
-LLM_RESPONSE request_id=… latency=…s input_tokens=… output_tokens=… total_tokens=…
-LLM_USAGE    (same data written to ai.log)
-LLM_ERROR    (on failure, with type + status)
+AGENT_START / AGENT_ROUND / AGENT_TOOL_CALL / AGENT_TOOL_RESULT / AGENT_SUCCESS
+LLM_REQUEST / LLM_RESPONSE / LLM_USAGE
+MCP-style tool + API logs from the tool layer
 ```
 
-All logs go to terminal + rotating files in `logs/`.
+All correlated by `request_id` in terminal + `logs/app.log` + `logs/ai.log`.
