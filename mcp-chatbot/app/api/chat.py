@@ -15,7 +15,9 @@ from pydantic import BaseModel, Field
 
 from app.agent.agent import get_agent
 from app.services.llm_service import LLMServiceError, get_llm_service
+from app.services.metrics import get_metrics
 from app.utils.logger import get_logger
+from app.utils.request_context import set_request_id
 
 logger = get_logger(__name__)
 
@@ -62,13 +64,9 @@ async def chat(
     body: ChatRequest,
     authorization: Optional[str] = Header(default=None),
 ):
-    """
-    Full multi-step agent with conversation memory.
-
-    Pass the same conversation_id on follow-up messages to continue context.
-    Authorization: Bearer <token> for trip tools.
-    """
+    """Full multi-step agent with conversation memory and metrics."""
     request_id = f"req_{uuid.uuid4().hex[:8]}"
+    set_request_id(request_id)
     token = _extract_bearer(authorization) or body.access_token
 
     logger.info(
@@ -87,12 +85,24 @@ async def chat(
         access_token=token,
     )
 
+    metrics = get_metrics()
+    metrics.record_request(
+        success=result.success,
+        latency_seconds=result.total_latency_seconds,
+        input_tokens=result.usage.get("input_tokens", 0),
+        output_tokens=result.usage.get("output_tokens", 0),
+        tool_calls=result.tool_calls_made,
+        llm_calls=max(1, len(result.workflow_steps) or 1),
+        llm_errors=0 if result.success else 1,
+    )
+
     if not result.success:
         logger.error(
             "REQUEST_FAILED request_id=%s error=%s",
             result.request_id,
             result.error,
         )
+        set_request_id(None)
         raise HTTPException(
             status_code=502,
             detail={
@@ -112,6 +122,7 @@ async def chat(
         result.message_count,
         result.total_latency_seconds,
     )
+    set_request_id(None)
 
     return ChatResponse(
         success=True,
@@ -129,8 +140,9 @@ async def chat(
 
 @router.post("/chat/test", response_model=ChatResponse, tags=["chat"])
 async def chat_test(body: ChatRequest):
-    """LLM-only smoke test (no tools, no durable memory)."""
+    """LLM-only smoke test with metrics."""
     request_id = f"req_{uuid.uuid4().hex[:8]}"
+    set_request_id(request_id)
     conversation_id = body.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
 
     llm = get_llm_service()
@@ -141,10 +153,26 @@ async def chat_test(body: ChatRequest):
             request_id=request_id,
         )
     except LLMServiceError as exc:
+        get_metrics().record_request(
+            success=False,
+            latency_seconds=0.0,
+            llm_calls=1,
+            llm_errors=1,
+        )
+        set_request_id(None)
         raise HTTPException(
             status_code=502,
             detail={"success": False, "request_id": request_id, "error": str(exc)},
         ) from exc
+
+    get_metrics().record_request(
+        success=True,
+        latency_seconds=result.latency_seconds,
+        input_tokens=result.usage.input_tokens,
+        output_tokens=result.usage.output_tokens,
+        llm_calls=1,
+    )
+    set_request_id(None)
 
     return ChatResponse(
         success=True,
