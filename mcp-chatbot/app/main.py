@@ -8,13 +8,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat import router as chat_router
+from app.api.conversations import router as conversations_router
 from app.config import get_settings
 from app.utils.logger import setup_logging, get_logger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
     setup_logging()
     logger = get_logger("app.main")
     settings = get_settings()
@@ -25,7 +25,6 @@ async def lifespan(app: FastAPI):
         settings.groq_model,
     )
     yield
-    # Shutdown
     logger.info("Shutting down GlobeTrotter MCP Chatbot")
 
 
@@ -39,7 +38,6 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS – allow the existing React frontend during development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -55,7 +53,6 @@ app.add_middleware(
 
 @app.get("/health", tags=["health"])
 async def health():
-    """Simple health check used by load balancers and local verification."""
     settings = get_settings()
     return {
         "success": True,
@@ -68,5 +65,5 @@ async def health():
     }
 
 
-# Phase 3: simple LLM test endpoint (no MCP tools yet)
 app.include_router(chat_router, prefix="/api", tags=["chat"])
+app.include_router(conversations_router, prefix="/api")
