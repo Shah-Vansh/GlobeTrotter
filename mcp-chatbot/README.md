@@ -4,54 +4,42 @@ Natural-language interface over existing GlobeTrotter APIs via **Groq + tools + 
 
 > Chatbot capability = frontend capability. No invented features.
 
-## Observability (Phase 8)
+## Frontend (Phase 9)
 
-Every request is correlated with a `request_id` across:
+A floating **ChatWidget** is mounted in `client/src/layout/MainLayout.jsx` (authenticated shell only).
 
-- Terminal logs
-- `logs/app.log` (rotating, 5 MB × 5)
-- `logs/error.log` (errors only)
-- `logs/ai.log` (LLM / tools / tokens)
+- Uses `VITE_CHATBOT_URL` (default `http://127.0.0.1:8001`)
+- Sends `Authorization: Bearer` from `tokenStorage` (same JWT as the app)
+- Keeps `conversation_id` in `localStorage` for multi-turn memory
+- Shows workflow steps under assistant replies when tools ran
 
-### Metrics API
-
-```
-GET  /api/metrics           # request counts, tokens, tool stats, latency
-POST /api/metrics/reset     # reset counters
-GET  /api/observability     # log file status + metrics snapshot
-GET  /health
-```
-
-Example metrics payload fields: `requests.total/success/failed`, `llm.input_tokens/output_tokens`, `tools.by_name`, `latency_seconds.avg/max`.
-
-### Tests
+### Run full stack
 
 ```bash
-cd mcp-chatbot && source venv/bin/activate
-pytest tests/test_logging.py -q
-```
+# Terminal 1 – Flask backend
+cd server && flask run   # :5000
 
-## Memory (Phase 7)
-
-Reuse `conversation_id` across turns. Manage via `/api/conversations`.
-
-## Auth
-
-`Authorization: Bearer <access_token>` for trip tools.
-
-## Phases
-
-- [x] 0–7 Foundation through durable memory
-- [x] **8 – Observability (metrics, log rotation, tests)**
-- [ ] 9 – Frontend Chat UI
-- [ ] 10 – Production readiness
-
-## Run
-
-```bash
+# Terminal 2 – MCP chatbot
 cd mcp-chatbot && source venv/bin/activate
 uvicorn app.main:app --reload --port 8001
 
-curl http://127.0.0.1:8001/api/metrics
-curl http://127.0.0.1:8001/api/observability
+# Terminal 3 – React client
+cd client && npm run dev   # :5173
 ```
+
+Set in `client/.env`:
+
+```
+VITE_BASE_URL=http://localhost:5000
+VITE_CHATBOT_URL=http://127.0.0.1:8001
+```
+
+## Observability
+
+`GET /api/metrics` · `GET /api/observability` · rotating logs under `logs/`
+
+## Phases
+
+- [x] 0–8 Backend agent, tools, memory, metrics
+- [x] **9 – Frontend Chat UI**
+- [ ] 10 – Testing & production readiness
