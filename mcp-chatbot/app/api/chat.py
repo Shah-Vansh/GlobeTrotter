@@ -1,7 +1,7 @@
 """
 Chat API routes.
 
-- POST /api/chat       – full agent (LLM + tools), optional Bearer JWT
+- POST /api/chat       – full agent (multi-step tools), optional Bearer JWT
 - POST /api/chat/test  – LLM only (no tools)
 """
 
@@ -31,7 +31,6 @@ SYSTEM_PROMPT_TEST = (
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: Optional[str] = None
-    # Optional body token (prefer Authorization header)
     access_token: Optional[str] = None
 
 
@@ -44,6 +43,7 @@ class ChatResponse(BaseModel):
     latency_seconds: float
     usage: dict[str, int] = Field(default_factory=dict)
     tool_calls_made: list[dict[str, Any]] = Field(default_factory=list)
+    workflow_steps: list[str] = Field(default_factory=list)
     error: Optional[str] = None
 
 
@@ -62,15 +62,9 @@ async def chat(
     authorization: Optional[str] = Header(default=None),
 ):
     """
-    Full agent endpoint.
+    Full multi-step agent endpoint.
 
-    Send the user's GlobeTrotter JWT as:
-      Authorization: Bearer <access_token>
-    or in the body as access_token.
-
-    Without a token, only public tools (destinations/activities) work.
-    Trip/itinerary tools require a valid token with the same privileges
-    as the frontend user.
+    Authorization: Bearer <GlobeTrotter access_token> for trip tools.
     """
     request_id = f"req_{uuid.uuid4().hex[:8]}"
     token = _extract_bearer(authorization) or body.access_token
@@ -104,13 +98,15 @@ async def chat(
                 "request_id": result.request_id,
                 "conversation_id": result.conversation_id,
                 "error": result.error,
+                "workflow_steps": result.workflow_steps,
             },
         )
 
     logger.info(
-        "REQUEST_SUCCESS request_id=%s tools=%d latency=%.3fs",
+        "REQUEST_SUCCESS request_id=%s tools=%d workflow=%s latency=%.3fs",
         result.request_id,
         len(result.tool_calls_made),
+        " → ".join(result.workflow_steps) if result.workflow_steps else "(none)",
         result.total_latency_seconds,
     )
 
@@ -123,12 +119,13 @@ async def chat(
         latency_seconds=result.total_latency_seconds,
         usage=result.usage,
         tool_calls_made=result.tool_calls_made,
+        workflow_steps=result.workflow_steps,
     )
 
 
 @router.post("/chat/test", response_model=ChatResponse, tags=["chat"])
 async def chat_test(body: ChatRequest):
-    """Phase 3 smoke-test: Groq only, no tools."""
+    """LLM-only smoke test (no tools)."""
     request_id = f"req_{uuid.uuid4().hex[:8]}"
     conversation_id = body.conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
 
@@ -158,4 +155,5 @@ async def chat_test(body: ChatRequest):
             "total_tokens": result.usage.total_tokens,
         },
         tool_calls_made=[],
+        workflow_steps=[],
     )
