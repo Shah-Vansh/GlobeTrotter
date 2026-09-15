@@ -4,48 +4,45 @@ Natural-language interface over existing GlobeTrotter APIs via **Groq + tools + 
 
 > Chatbot capability = frontend capability. No invented features.
 
-## Conversation memory (Phase 7)
+## Observability (Phase 8)
 
-- Reuse the same `conversation_id` across messages to keep history
-- Messages stored in memory + JSON files under `data/conversations/`
-- Windowed to the last **40** messages
-- Idle conversations expire from RAM after **12 hours** (disk files remain until deleted)
-- Session metadata tracks `last_trip_id`, `last_stop_id`, `recent_tools` and is injected into the system prompt so follow-ups like “add activities to that trip” work
+Every request is correlated with a `request_id` across:
 
-### Memory APIs
+- Terminal logs
+- `logs/app.log` (rotating, 5 MB × 5)
+- `logs/error.log` (errors only)
+- `logs/ai.log` (LLM / tools / tokens)
+
+### Metrics API
 
 ```
-GET    /api/conversations
-GET    /api/conversations/{id}
-DELETE /api/conversations/{id}
+GET  /api/metrics           # request counts, tokens, tool stats, latency
+POST /api/metrics/reset     # reset counters
+GET  /api/observability     # log file status + metrics snapshot
+GET  /health
 ```
 
-### Multi-turn example
+Example metrics payload fields: `requests.total/success/failed`, `llm.input_tokens/output_tokens`, `tools.by_name`, `latency_seconds.avg/max`.
+
+### Tests
 
 ```bash
-# Turn 1
-curl -s -X POST http://127.0.0.1:8001/api/chat \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"message":"Create a trip Goa Escape from 2026-12-01 to 2026-12-05"}'
-# → note conversation_id from response
-
-# Turn 2 (same conversation_id)
-curl -s -X POST http://127.0.0.1:8001/api/chat \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $TOKEN" \
-  -d '{"conversation_id":"conv_…","message":"Add a stop for the Goa city we found and list my trips"}'
+cd mcp-chatbot && source venv/bin/activate
+pytest tests/test_logging.py -q
 ```
+
+## Memory (Phase 7)
+
+Reuse `conversation_id` across turns. Manage via `/api/conversations`.
 
 ## Auth
 
-`Authorization: Bearer <access_token>` — same JWT as the GlobeTrotter frontend.
+`Authorization: Bearer <access_token>` for trip tools.
 
 ## Phases
 
-- [x] 0–6 Foundation, tools, Groq, agent, trips, multi-step workflows
-- [x] **7 – Durable conversation memory**
-- [ ] 8 – Observability polish
+- [x] 0–7 Foundation through durable memory
+- [x] **8 – Observability (metrics, log rotation, tests)**
 - [ ] 9 – Frontend Chat UI
 - [ ] 10 – Production readiness
 
@@ -54,11 +51,7 @@ curl -s -X POST http://127.0.0.1:8001/api/chat \
 ```bash
 cd mcp-chatbot && source venv/bin/activate
 uvicorn app.main:app --reload --port 8001
-```
 
-Inspect memory:
-
-```bash
-curl http://127.0.0.1:8001/api/conversations
-curl http://127.0.0.1:8001/api/conversations/conv_xxxx
+curl http://127.0.0.1:8001/api/metrics
+curl http://127.0.0.1:8001/api/observability
 ```
