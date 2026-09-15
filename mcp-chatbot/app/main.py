@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.chat import router as chat_router
 from app.config import get_settings
 from app.utils.logger import setup_logging, get_logger
 
@@ -67,6 +68,5 @@ async def health():
     }
 
 
-# Placeholder – real chat router will be added in later phases
-# from app.api.chat import router as chat_router
-# app.include_router(chat_router, prefix="/api", tags=["chat"])
+# Phase 3: simple LLM test endpoint (no MCP tools yet)
+app.include_router(chat_router, prefix="/api", tags=["chat"])
