@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.chat import router as chat_router
 from app.api.conversations import router as conversations_router
+from app.api.observability import router as observability_router
 from app.config import get_settings
 from app.utils.logger import setup_logging, get_logger
 
@@ -67,3 +68,4 @@ async def health():
 
 app.include_router(chat_router, prefix="/api", tags=["chat"])
 app.include_router(conversations_router, prefix="/api")
+app.include_router(observability_router, prefix="/api")
