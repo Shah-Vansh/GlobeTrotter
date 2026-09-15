@@ -1,19 +1,13 @@
 /**
  * layout/MainLayout.jsx
- * Shell wrapping every authenticated page: Header on top, collapsible
- * Sidebar on the left, breadcrumb strip + routed page content on the
- * right. All of screens 3/6/8/9/10/11/12 share this shell.
- *
- * Layout is pinned to the viewport height (`h-screen overflow-hidden`)
- * with only `<main>` scrolling internally. This keeps the Header and
- * Sidebar fixed in place as the page content scrolls - without a fixed
- * viewport height here, the whole document would scroll instead and
- * drag the sidebar along with it.
+ * Shell wrapping every authenticated page: Header, Sidebar, breadcrumb,
+ * page content, and the floating MCP ChatWidget.
  */
 import { Outlet } from "react-router-dom";
 import Header from "./Header";
 import Sidebar from "./Sidebar";
 import Breadcrumb from "./Breadcrumb";
+import ChatWidget from "../components/chat/ChatWidget";
 
 export default function MainLayout() {
   return (
@@ -30,6 +24,7 @@ export default function MainLayout() {
           </div>
         </main>
       </div>
+      <ChatWidget />
     </div>
   );
 }
