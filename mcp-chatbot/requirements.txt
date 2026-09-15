@@ -14,17 +14,12 @@ python-dotenv>=1.0.1
 pydantic>=2.9.0
 pydantic-settings>=2.5.0
 
-# LLM
+# LLM (used from Phase 3 onwards)
 groq>=0.11.0
 
-# MCP
+# MCP (official Python SDK – includes FastMCP)
 mcp>=1.0.0
-# or fastmcp if preferred later
-
-# Logging helpers (stdlib is enough, but these help)
-# (no extra packages required for rotating logs)
 
 # Testing
 pytest>=8.3.0
 pytest-asyncio>=0.24.0
-httpx  # already listed, used for TestClient too
