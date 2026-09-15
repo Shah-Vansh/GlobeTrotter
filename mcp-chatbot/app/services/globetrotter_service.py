@@ -32,10 +32,10 @@ class GlobeTrotterAPIError(Exception):
 class GlobeTrotterService:
     """Thin async HTTP client for the existing GlobeTrotter APIs."""
 
-    def __init__(self, base_url: Optional[str] = None, timeout: float = 30.0):
+    def __init__(self, base_url: Optional[str] = None, timeout: Optional[float] = None):
         settings = get_settings()
         self.base_url = (base_url or settings.globetrotter_api_url).rstrip("/")
-        self.timeout = timeout
+        self.timeout = timeout if timeout is not None else settings.api_timeout_seconds
 
     def _headers(self, access_token: Optional[str] = None) -> dict[str, str]:
         headers = {"Accept": "application/json", "Content-Type": "application/json"}
@@ -124,10 +124,6 @@ class GlobeTrotterService:
             return payload["data"]
         return payload
 
-    # ------------------------------------------------------------------
-    # Cities / Destinations (public)
-    # ------------------------------------------------------------------
-
     async def search_destinations(
         self,
         *,
@@ -160,10 +156,6 @@ class GlobeTrotterService:
         self, city_id: int, *, request_id: Optional[str] = None
     ) -> Any:
         return await self._request("GET", f"/api/cities/{city_id}", request_id=request_id)
-
-    # ------------------------------------------------------------------
-    # Activities (public)
-    # ------------------------------------------------------------------
 
     async def search_activities(
         self,
@@ -202,10 +194,6 @@ class GlobeTrotterService:
         return await self._request(
             "GET", f"/api/activities/{activity_id}", request_id=request_id
         )
-
-    # ------------------------------------------------------------------
-    # Trips (JWT required)
-    # ------------------------------------------------------------------
 
     async def list_trips(
         self,
@@ -337,10 +325,6 @@ class GlobeTrotterService:
             request_id=request_id,
         )
 
-    # ------------------------------------------------------------------
-    # Stops
-    # ------------------------------------------------------------------
-
     async def add_stop(
         self,
         trip_id: int,
@@ -423,10 +407,6 @@ class GlobeTrotterService:
             access_token=access_token,
             request_id=request_id,
         )
-
-    # ------------------------------------------------------------------
-    # Itinerary
-    # ------------------------------------------------------------------
 
     async def list_itinerary(
         self,
