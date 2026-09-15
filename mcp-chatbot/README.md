@@ -2,44 +2,54 @@
 
 Natural-language interface over existing GlobeTrotter APIs via **Groq + tools + FastAPI**.
 
-> Chatbot capability = frontend capability. No invented features.
+> **Rule:** Chatbot capability = frontend capability. Tools only wrap real APIs.
 
-## Frontend (Phase 9)
+## Status: Phases 0–10 complete
 
-A floating **ChatWidget** is mounted in `client/src/layout/MainLayout.jsx` (authenticated shell only).
+| Phase | Deliverable |
+|-------|-------------|
+| 0–1 | Audit, logging foundation |
+| 2 | MCP-style tools over existing APIs |
+| 3 | Groq + gpt-oss-120b |
+| 4 | Agentic tool loop |
+| 5 | Full trips/stops/itinerary tools + JWT |
+| 6 | Multi-step workflows |
+| 7 | Durable conversation memory |
+| 8 | Metrics + observability |
+| 9 | React ChatWidget |
+| **10** | **Tests, rate limit, production checklist** |
 
-- Uses `VITE_CHATBOT_URL` (default `http://127.0.0.1:8001`)
-- Sends `Authorization: Bearer` from `tokenStorage` (same JWT as the app)
-- Keeps `conversation_id` in `localStorage` for multi-turn memory
-- Shows workflow steps under assistant replies when tools ran
+## Production features (Phase 10)
 
-### Run full stack
+- Rate limiting on `/api/chat` (default 30 req / 60s per IP)
+- Configurable CORS, API/LLM timeouts
+- Optional `REQUIRE_GROQ_KEY`
+- Automated tests: auth tools, schemas, metrics, rate limit
+- Checklist: `docs/PRODUCTION_CHECKLIST.md`
 
 ```bash
-# Terminal 1 – Flask backend
-cd server && flask run   # :5000
-
-# Terminal 2 – MCP chatbot
-cd mcp-chatbot && source venv/bin/activate
-uvicorn app.main:app --reload --port 8001
-
-# Terminal 3 – React client
-cd client && npm run dev   # :5173
+pytest tests/ -q
 ```
 
-Set in `client/.env`:
+## Run full stack
+
+```bash
+# Flask :5000 | Chatbot :8001 | React :5173
+uvicorn app.main:app --reload --port 8001
+```
+
+Client env:
 
 ```
 VITE_BASE_URL=http://localhost:5000
 VITE_CHATBOT_URL=http://127.0.0.1:8001
 ```
 
-## Observability
+## Key endpoints
 
-`GET /api/metrics` · `GET /api/observability` · rotating logs under `logs/`
-
-## Phases
-
-- [x] 0–8 Backend agent, tools, memory, metrics
-- [x] **9 – Frontend Chat UI**
-- [ ] 10 – Testing & production readiness
+| Method | Path | Notes |
+|--------|------|-------|
+| POST | `/api/chat` | Agent + tools (JWT optional for public tools) |
+| GET | `/api/conversations` | Memory |
+| GET | `/api/metrics` | Counters |
+| GET | `/health` | Liveness |
