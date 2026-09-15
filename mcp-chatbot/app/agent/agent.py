@@ -1,15 +1,8 @@
 """
-GlobeTrotter agent – Phase 4.
+GlobeTrotter agent – Phase 4/5.
 
-Orchestrates:
-  User message
-    → Groq (gpt-oss-120b) with tool schemas
-    → optional tool calls (search_destinations, …)
-    → tool results fed back to the model
-    → final natural-language answer
-
-Tools are the same implementations used by the MCP server; they call
-the existing GlobeTrotter HTTP APIs only.
+Orchestrates LLM tool calling against existing GlobeTrotter APIs.
+Authenticated tools use the request-scoped JWT (same privileges as frontend).
 """
 
 from __future__ import annotations
@@ -24,12 +17,13 @@ from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.state import get_or_create_conversation
 from app.agent.tools_schema import TOOL_IMPLEMENTATIONS, get_tool_schemas
 from app.services.llm_service import LLMServiceError, get_llm_service
+from app.utils.auth_context import set_access_token
 from app.utils.logger import get_logger, get_ai_logger
 
 logger = get_logger(__name__)
 ai_logger = get_ai_logger()
 
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 8
 
 
 @dataclass
@@ -46,8 +40,6 @@ class AgentResult:
 
 
 class GlobeTrotterAgent:
-    """Agentic loop: LLM ↔ tools ↔ existing GlobeTrotter APIs."""
-
     def __init__(self):
         self.llm = get_llm_service()
         self.tool_schemas = get_tool_schemas()
@@ -58,21 +50,27 @@ class GlobeTrotterAgent:
         *,
         conversation_id: Optional[str] = None,
         request_id: Optional[str] = None,
+        access_token: Optional[str] = None,
     ) -> AgentResult:
         rid = request_id or f"req_{uuid.uuid4().hex[:8]}"
         cid = conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
         started = time.perf_counter()
 
+        # Propagate JWT to authenticated tools for this request
+        set_access_token(access_token)
+
         logger.info(
-            "AGENT_START request_id=%s conversation_id=%s message=%s",
+            "AGENT_START request_id=%s conversation_id=%s authenticated=%s message=%s",
             rid,
             cid,
+            bool(access_token),
             user_message[:120],
         )
         ai_logger.info(
-            "AGENT_START request_id=%s conversation_id=%s",
+            "AGENT_START request_id=%s conversation_id=%s authenticated=%s",
             rid,
             cid,
+            bool(access_token),
         )
 
         state = get_or_create_conversation(cid)
@@ -102,11 +100,9 @@ class GlobeTrotterAgent:
                 total_input_tokens += llm_result.usage.input_tokens
                 total_output_tokens += llm_result.usage.output_tokens
 
-                # Inspect raw completion for tool_calls
                 tool_calls = self._extract_tool_calls(llm_result.raw)
 
                 if not tool_calls:
-                    # Final text answer
                     reply = llm_result.content or ""
                     state.add_assistant(reply)
                     total_latency = time.perf_counter() - started
@@ -118,13 +114,6 @@ class GlobeTrotterAgent:
                         len(tool_calls_log),
                         total_latency,
                     )
-                    ai_logger.info(
-                        "AGENT_SUCCESS request_id=%s total_tokens=%d latency=%.3fs",
-                        rid,
-                        total_input_tokens + total_output_tokens,
-                        total_latency,
-                    )
-
                     return AgentResult(
                         success=True,
                         request_id=rid,
@@ -140,7 +129,6 @@ class GlobeTrotterAgent:
                         },
                     )
 
-                # Model requested tool calls – execute them
                 state.add_assistant(
                     llm_result.content or "",
                     tool_calls=[
@@ -167,11 +155,6 @@ class GlobeTrotterAgent:
                         tool_name,
                         arguments,
                     )
-                    ai_logger.info(
-                        "AGENT_TOOL_CALL request_id=%s tool=%s",
-                        rid,
-                        tool_name,
-                    )
 
                     tool_result = await self._execute_tool(tool_name, arguments)
                     result_text = json.dumps(tool_result, default=str)
@@ -183,7 +166,6 @@ class GlobeTrotterAgent:
                             "success": tool_result.get("success", False),
                         }
                     )
-
                     state.add_tool_result(tool_call_id, tool_name, result_text)
 
                     logger.info(
@@ -193,16 +175,10 @@ class GlobeTrotterAgent:
                         tool_result.get("success"),
                     )
 
-            # Exceeded max rounds – return whatever we have
             total_latency = time.perf_counter() - started
             fallback = (
                 "I reached the maximum number of tool steps while processing your request. "
                 "Please try a more specific question."
-            )
-            logger.warning(
-                "AGENT_MAX_ROUNDS request_id=%s latency=%.3fs",
-                rid,
-                total_latency,
             )
             return AgentResult(
                 success=True,
@@ -221,12 +197,7 @@ class GlobeTrotterAgent:
 
         except LLMServiceError as exc:
             total_latency = time.perf_counter() - started
-            logger.error(
-                "AGENT_FAILED request_id=%s error=%s latency=%.3fs",
-                rid,
-                str(exc),
-                total_latency,
-            )
+            logger.error("AGENT_FAILED request_id=%s error=%s", rid, str(exc))
             return AgentResult(
                 success=False,
                 request_id=rid,
@@ -239,11 +210,7 @@ class GlobeTrotterAgent:
             )
         except Exception as exc:  # noqa: BLE001
             total_latency = time.perf_counter() - started
-            logger.exception(
-                "AGENT_FAILED request_id=%s unexpected=%s",
-                rid,
-                str(exc),
-            )
+            logger.exception("AGENT_FAILED request_id=%s unexpected=%s", rid, str(exc))
             return AgentResult(
                 success=False,
                 request_id=rid,
@@ -254,9 +221,10 @@ class GlobeTrotterAgent:
                 tool_calls_made=tool_calls_log,
                 error=f"Unexpected agent error: {exc}",
             )
+        finally:
+            set_access_token(None)
 
     def _extract_tool_calls(self, completion: Any) -> list[dict[str, Any]]:
-        """Parse tool_calls from a Groq/OpenAI-style completion object."""
         if completion is None:
             return []
         try:
@@ -294,7 +262,6 @@ class GlobeTrotterAgent:
         try:
             return await impl(**arguments)
         except TypeError as exc:
-            # Bad / unexpected arguments from the model
             return {"success": False, "error": f"Invalid arguments for {name}: {exc}"}
         except Exception as exc:  # noqa: BLE001
             return {"success": False, "error": f"Tool {name} failed: {exc}"}
