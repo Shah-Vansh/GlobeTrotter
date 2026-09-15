@@ -2,145 +2,92 @@
 
 Natural-language interface over the existing GlobeTrotter application using **MCP + Groq (`openai/gpt-oss-120b`) + FastAPI**.
 
-> **Core rule**: The chatbot can only do what the existing GlobeTrotter frontend + backend already support. MCP tools are thin wrappers around existing APIs. No invented functionality.
+> **Core rule**: Chatbot capability = existing frontend capability. Tools only wrap real APIs. No invented features.
 
-## Architecture Summary
-
-```
-User → Chat UI → FastAPI /api/chat → Agent (Groq / gpt-oss-120b)
-                                          ↓ tool schemas
-                                   Tool implementations
-                                          ↓
-                              Existing GlobeTrotter APIs
-                                          ↓
-                                   Existing Backend + DB
-```
-
-(Same tool functions also power the standalone MCP server in `app/mcp/server.py`.)
-
-## Development Branch
-
-All work happens exclusively on the **`dev`** branch.
-
-## Project Structure
+## Auth model
 
 ```
-mcp-chatbot/
-├── app/
-│   ├── api/chat.py              # POST /api/chat (agent) + /api/chat/test
-│   ├── agent/
-│   │   ├── agent.py             # Agentic tool-calling loop (Phase 4)
-│   │   ├── tools_schema.py      # OpenAI/Groq tool definitions
-│   │   ├── prompts.py
-│   │   └── state.py             # In-memory conversation state
-│   ├── mcp/server.py + client.py
-│   ├── tools/destinations.py + activities.py
-│   ├── services/globetrotter_service.py + llm_service.py
-│   └── utils/logger.py
-├── scripts/test_llm.py + test_agent.py
-├── docs/CAPABILITY_MATRIX.md
-└── ...
+Frontend JWT  →  Authorization: Bearer <token>  →  /api/chat  →  agent  →  tools  →  same backend APIs
 ```
 
-## Implemented tools
+The chatbot never gets more privilege than the logged-in user.
 
-| Tool name                 | Backend API                | Status |
-|---------------------------|----------------------------|--------|
-| `search_destinations`     | `GET /api/cities`          | ✅     |
-| `get_destination_details` | `GET /api/cities/{id}`     | ✅     |
-| `search_activities`       | `GET /api/activities`      | ✅     |
-| `get_activity_details`    | `GET /api/activities/{id}` | ✅     |
+## Implemented tools (Phase 5)
 
-## Environment
+**Public**
+| Tool | API |
+|------|-----|
+| `search_destinations` | `GET /api/cities` |
+| `get_destination_details` | `GET /api/cities/{id}` |
+| `search_activities` | `GET /api/activities` |
+| `get_activity_details` | `GET /api/activities/{id}` |
 
-```bash
-cp .env.example .env
-# GROQ_API_KEY=...
-# GROQ_MODEL=openai/gpt-oss-120b
-# GLOBETROTTER_API_URL=http://localhost:5000
-```
+**Authenticated (JWT required)**
+| Tool | API |
+|------|-----|
+| `list_trips` | `GET /api/trips` |
+| `create_trip` | `POST /api/trips` |
+| `get_trip` | `GET /api/trips/{id}` |
+| `update_trip` | `PUT /api/trips/{id}` |
+| `delete_trip` | `DELETE /api/trips/{id}` |
+| `get_trip_budget` | `GET /api/trips/{id}/budget` |
+| `share_trip` / `unshare_trip` | `POST .../share` / `unshare` |
+| `add_stop_to_trip` | `POST .../stops` |
+| `update_stop` / `remove_stop` | `PUT/DELETE .../stops/{id}` |
+| `reorder_stops` | `PUT .../stops/reorder` |
+| `list_itinerary` | `GET .../itinerary` |
+| `add_activity_to_itinerary` | `POST .../itinerary` |
+| `update_itinerary_activity` | `PUT .../itinerary/{id}` |
+| `remove_activity_from_itinerary` | `DELETE .../itinerary/{id}` |
 
 ## Phases
 
-- [x] Phase 0 – Audit
-- [x] Phase 1 – Foundation + Logging
-- [x] Phase 2 – MCP Server + real tools
-- [x] Phase 3 – Groq integration
-- [x] **Phase 4 – LLM + tool calling**
-- [ ] Phase 5 – Full API → MCP tools (trips, itinerary, auth…)
-- [ ] Phase 6 – Richer multi-tool workflows
-- [ ] Phase 7 – Durable memory
+- [x] Phase 0–4
+- [x] **Phase 5 – Full trip/itinerary API → tools + JWT**
+- [ ] Phase 6 – Richer multi-tool workflows polish
+- [ ] Phase 7 – Durable conversation memory
 - [ ] Phase 8 – Observability polish
 - [ ] Phase 9 – Frontend Chat UI
-- [ ] Phase 10 – Testing & production readiness
+- [ ] Phase 10 – Production readiness
 
-## How to run Phase 4
-
-### Prerequisites
-
-1. GlobeTrotter Flask backend on `:5000` (seeded data recommended)
-2. `GROQ_API_KEY` in `.env`
-
-### Install & start API
+## Quick start
 
 ```bash
 cd mcp-chatbot
 source venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env   # GROQ_API_KEY + GLOBETROTTER_API_URL
+
+# Terminal 1: Flask backend
+# Terminal 2:
 uvicorn app.main:app --reload --port 8001
 ```
 
-### CLI agent test
-
-```bash
-python -m scripts.test_agent
-python -m scripts.test_agent "Find beach destinations related to Goa"
-python -m scripts.test_agent "Show highly rated activities"
-```
-
-### HTTP agent test
+### Public query
 
 ```bash
 curl -X POST http://127.0.0.1:8001/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Search for destinations in India and suggest a few activities"}'
+  -d '{"message": "Search destinations related to Goa"}'
 ```
 
-Example response fields:
-
-```json
-{
-  "success": true,
-  "request_id": "req_…",
-  "conversation_id": "conv_…",
-  "reply": "…natural language summary…",
-  "model": "openai/gpt-oss-120b",
-  "latency_seconds": 2.14,
-  "usage": { "input_tokens": …, "output_tokens": …, "total_tokens": … },
-  "tool_calls_made": [
-    { "tool": "search_destinations", "arguments": {"search": "India"}, "success": true }
-  ]
-}
-```
-
-Pass the same `conversation_id` on follow-up messages to keep context.
-
-### LLM-only test (no tools)
+### Authenticated query (use token from POST /api/auth/login)
 
 ```bash
-curl -X POST http://127.0.0.1:8001/api/chat/test \
+curl -X POST http://127.0.0.1:8001/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Hello"}'
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -d '{"message": "Create a 5-day Goa trip starting 2026-12-01 and list my trips"}'
+```
+
+Demo users from seed: `alice` / `Password@123`
+
+### CLI agent
+
+```bash
+python -m scripts.test_agent "Find highly rated activities"
 ```
 
 ## Logging
 
-Agent loop emits:
-
-```
-AGENT_START / AGENT_ROUND / AGENT_TOOL_CALL / AGENT_TOOL_RESULT / AGENT_SUCCESS
-LLM_REQUEST / LLM_RESPONSE / LLM_USAGE
-MCP-style tool + API logs from the tool layer
-```
-
-All correlated by `request_id` in terminal + `logs/app.log` + `logs/ai.log`.
+Every request logs `request_id`, tool names, API endpoints, latency, tokens, and errors to terminal + `logs/`.
