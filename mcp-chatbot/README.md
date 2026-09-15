@@ -29,11 +29,19 @@ mcp-chatbot/
 ├── app/
 │   ├── api/              # FastAPI routes (chat, health)
 │   ├── agent/            # LLM orchestration, prompts, state
-│   ├── mcp/              # MCP client + server
-│   ├── tools/            # MCP tools (wrappers around GlobeTrotter APIs)
-│   ├── services/         # LLM service, GlobeTrotter HTTP client
-│   └── utils/            # logger, helpers
-├── logs/                 # Rotating log files (app.log, error.log, ai.log)
+│   ├── mcp/
+│   │   ├── server.py     # FastMCP server (Phase 2)
+│   │   └── client.py     # Simple MCP client for testing
+│   ├── tools/
+│   │   ├── destinations.py
+│   │   └── activities.py
+│   ├── services/
+│   │   └── globetrotter_service.py   # HTTP client → existing APIs
+│   └── utils/
+│       └── logger.py
+├── docs/
+│   └── CAPABILITY_MATRIX.md
+├── logs/
 ├── tests/
 ├── .env.example
 ├── requirements.txt
@@ -42,67 +50,89 @@ mcp-chatbot/
 
 ## Capability Matrix (Phase 0 Audit)
 
-Based on actual routes in `server/app/routes/`:
+See `docs/CAPABILITY_MATRIX.md` for the full table.
 
-| Frontend Feature              | Existing API                          | Auth Required | Planned MCP Tool                  | Status |
-|-------------------------------|---------------------------------------|---------------|-----------------------------------|--------|
-| List / Search Cities          | `GET /api/cities`                     | No            | `search_destinations`             | ⬜     |
-| Get City Details              | `GET /api/cities/{id}`                | No            | `get_destination_details`         | ⬜     |
-| List / Search Activities      | `GET /api/activities`                 | No            | `search_activities`               | ⬜     |
-| Get Activity Details          | `GET /api/activities/{id}`            | No            | `get_activity_details`            | ⬜     |
-| List My Trips                 | `GET /api/trips`                      | Yes           | `list_trips`                      | ⬜     |
-| Create Trip                   | `POST /api/trips`                     | Yes           | `create_trip`                     | ⬜     |
-| Get Trip (with stops)         | `GET /api/trips/{id}`                 | Yes           | `get_trip`                        | ⬜     |
-| Update Trip                   | `PUT /api/trips/{id}`                 | Yes           | `update_trip`                     | ⬜     |
-| Delete Trip                   | `DELETE /api/trips/{id}`              | Yes           | `delete_trip`                     | ⬜     |
-| Add Stop to Trip              | `POST /api/trips/{id}/stops`          | Yes           | `add_stop_to_trip`                | ⬜     |
-| Update / Delete Stop          | `PUT/DELETE .../stops/{stop_id}`      | Yes           | `update_stop` / `remove_stop`     | ⬜     |
-| Reorder Stops                 | `PUT .../stops/reorder`               | Yes           | `reorder_stops`                   | ⬜     |
-| Get Budget Breakdown          | `GET /api/trips/{id}/budget`          | Yes           | `get_trip_budget`                 | ⬜     |
-| Share / Unshare Trip          | `POST .../share` / `unshare`          | Yes           | `share_trip` / `unshare_trip`     | ⬜     |
-| List Itinerary for Stop       | `GET .../itinerary`                   | Yes           | `list_itinerary`                  | ⬜     |
-| Add Activity to Itinerary     | `POST .../itinerary`                  | Yes           | `add_activity_to_itinerary`       | ⬜     |
-| Update / Remove Itinerary Act | `PUT/DELETE .../itinerary/{id}`       | Yes           | `update_itinerary_activity` etc.  | ⬜     |
-| Auth (login / me)             | `POST /api/auth/login`, `GET /me`     | –             | (handled via token passing)       | ⬜     |
+**Currently implemented MCP tools (Phase 2):**
 
-Admin-only endpoints (create/update/delete cities & activities) will **not** be exposed to normal users via the chatbot unless the authenticated user is an admin.
+| MCP Tool                        | Backend API                | Status |
+|---------------------------------|----------------------------|--------|
+| `search_destinations_tool`      | `GET /api/cities`          | ✅     |
+| `get_destination_details_tool`  | `GET /api/cities/{id}`     | ✅     |
+| `search_activities_tool`        | `GET /api/activities`      | ✅     |
+| `get_activity_details_tool`     | `GET /api/activities/{id}` | ✅     |
 
 ## Environment Variables
 
 See `.env.example`.
 
+```bash
+cp .env.example .env
+# At minimum set:
+# GLOBETROTTER_API_URL=http://localhost:5000
+```
+
 ## Development Phases (Current Status)
 
 - [x] **Phase 0** – Audit existing APIs & create capability matrix
-- [ ] **Phase 1** – Foundation + Logging
-- [ ] **Phase 2** – MCP Server foundation (one real tool)
+- [x] **Phase 1** – Foundation + Logging
+- [x] **Phase 2** – MCP Server foundation (real tools → existing APIs)
 - [ ] **Phase 3** – Groq + gpt-oss-120b integration
 - [ ] **Phase 4** – LLM + MCP tool calling
-- [ ] **Phase 5** – Full API → MCP tool mapping
+- [ ] **Phase 5** – Full API → MCP tool mapping (trips, itinerary, …)
 - [ ] **Phase 6** – Agentic multi-tool workflows
 - [ ] **Phase 7** – Conversation memory / state
 - [ ] **Phase 8** – Full observability
 - [ ] **Phase 9** – Frontend Chat UI integration
 - [ ] **Phase 10** – Testing, security, production readiness
 
-## Running (once implemented)
+## Running
+
+### 1. Install
 
 ```bash
 cd mcp-chatbot
 python -m venv venv
-source venv/bin/activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env   # fill GROQ_API_KEY etc.
-uvicorn app.main:app --reload --port 8001
+cp .env.example .env              # edit GLOBETROTTER_API_URL if needed
 ```
+
+Make sure the existing GlobeTrotter Flask backend is running on the URL configured in `.env` (default `http://localhost:5000`).
+
+### 2. Health check (FastAPI)
+
+```bash
+uvicorn app.main:app --reload --port 8001
+# → http://127.0.0.1:8001/health
+```
+
+### 3. Run the MCP Server (stdio)
+
+```bash
+python -m app.mcp.server
+```
+
+### 4. Test MCP Client → Server → Tool → Existing API (no LLM)
+
+```bash
+python -m app.mcp.client
+```
+
+This will:
+1. Start the MCP server as a subprocess
+2. List available tools
+3. Call `search_destinations_tool` and `search_activities_tool`
+4. Print the JSON returned from the real GlobeTrotter backend
+
+You should see structured logs in the terminal and under `logs/`.
 
 ## Logging
 
-All requests, LLM calls, MCP tool executions, backend API calls, token usage, latency and errors are logged to:
+All requests, MCP tool executions, backend API calls, latency and errors are logged to:
 
 - Terminal (live)
 - `logs/app.log`
 - `logs/error.log`
 - `logs/ai.log`
 
-with request_id correlation and rotating file handlers.
+with `request_id` correlation and rotating file handlers.
