@@ -1,12 +1,11 @@
 """
-GlobeTrotter agent – Phases 4–6.
+GlobeTrotter agent – Phases 4–7.
 
-Multi-step agentic loop:
-  User message
-    → Groq + tool schemas
-    → sequential tool calls (search → create_trip → add_stop → …)
-    → compact tool results fed back
-    → final natural-language answer
+Multi-step agentic loop with conversation memory:
+  User message (conversation_id)
+    → load prior messages + metadata
+    → Groq + tools
+    → persist updated conversation
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ from typing import Any, Optional
 
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.result_utils import compact_tool_result
-from app.agent.state import get_or_create_conversation
+from app.agent.state import get_or_create_conversation, save_conversation
 from app.agent.tools_schema import TOOL_IMPLEMENTATIONS, get_tool_schemas
 from app.services.llm_service import LLMServiceError, get_llm_service
 from app.utils.auth_context import set_access_token
@@ -28,7 +27,6 @@ from app.utils.logger import get_logger, get_ai_logger
 logger = get_logger(__name__)
 ai_logger = get_ai_logger()
 
-# Enough room for: search cities → details → activities → create trip → stops → itinerary
 MAX_TOOL_ROUNDS = 10
 
 
@@ -44,6 +42,31 @@ class AgentResult:
     usage: dict[str, int] = field(default_factory=dict)
     error: Optional[str] = None
     workflow_steps: list[str] = field(default_factory=list)
+    message_count: int = 0
+
+
+def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
+    """Append session context so the model can reuse trip/stop ids across turns."""
+    extra_parts: list[str] = []
+    if metadata.get("last_trip_id") is not None:
+        extra_parts.append(f"last_trip_id={metadata['last_trip_id']}")
+    if metadata.get("last_stop_id") is not None:
+        extra_parts.append(f"last_stop_id={metadata['last_stop_id']}")
+    recent = metadata.get("recent_tools") or []
+    if recent:
+        extra_parts.append("recent_tools=" + ",".join(recent[-8:]))
+
+    if not extra_parts:
+        return SYSTEM_PROMPT
+
+    return (
+        SYSTEM_PROMPT
+        + "\n\n## Session memory (from this conversation)\n"
+        + "Use these ids when the user refers to 'that trip' or continues a plan:\n"
+        + "- "
+        + "\n- ".join(extra_parts)
+        + "\n"
+    )
 
 
 class GlobeTrotterAgent:
@@ -80,12 +103,22 @@ class GlobeTrotterAgent:
         )
 
         state = get_or_create_conversation(cid)
+        prior_count = len(state.messages)
         state.add_user(user_message)
+
+        logger.info(
+            "MEMORY request_id=%s conversation_id=%s prior_messages=%d metadata=%s",
+            rid,
+            cid,
+            prior_count,
+            state.metadata,
+        )
 
         total_input_tokens = 0
         total_output_tokens = 0
         tool_calls_log: list[dict[str, Any]] = []
         workflow_steps: list[str] = []
+        system_prompt = _system_prompt_with_memory(state.metadata)
 
         try:
             for round_idx in range(MAX_TOOL_ROUNDS):
@@ -98,7 +131,7 @@ class GlobeTrotterAgent:
 
                 llm_result = await self.llm.chat(
                     messages=state.messages,
-                    system_prompt=SYSTEM_PROMPT,
+                    system_prompt=system_prompt,
                     tools=self.tool_schemas,
                     tool_choice="auto",
                     request_id=f"{rid}_r{round_idx + 1}",
@@ -112,20 +145,17 @@ class GlobeTrotterAgent:
                 if not tool_calls:
                     reply = llm_result.content or ""
                     state.add_assistant(reply)
+                    save_conversation(cid)
                     total_latency = time.perf_counter() - started
 
                     logger.info(
-                        "AGENT_SUCCESS request_id=%s rounds=%d tools=%d steps=%s latency=%.3fs",
+                        "AGENT_SUCCESS request_id=%s rounds=%d tools=%d steps=%s latency=%.3fs messages=%d",
                         rid,
                         round_idx + 1,
                         len(tool_calls_log),
                         " → ".join(workflow_steps) if workflow_steps else "(none)",
                         total_latency,
-                    )
-                    ai_logger.info(
-                        "AGENT_WORKFLOW request_id=%s path=%s",
-                        rid,
-                        " → ".join(workflow_steps) if workflow_steps else "(text-only)",
+                        len(state.messages),
                     )
 
                     return AgentResult(
@@ -142,6 +172,7 @@ class GlobeTrotterAgent:
                             "total_tokens": total_input_tokens + total_output_tokens,
                         },
                         workflow_steps=workflow_steps,
+                        message_count=len(state.messages),
                     )
 
                 state.add_assistant(
@@ -170,14 +201,8 @@ class GlobeTrotterAgent:
                         tool_name,
                         arguments,
                     )
-                    ai_logger.info(
-                        "AGENT_TOOL_CALL request_id=%s tool=%s",
-                        rid,
-                        tool_name,
-                    )
 
                     tool_result = await self._execute_tool(tool_name, arguments)
-                    # Compact payload so multi-step chains stay within context limits
                     result_text = compact_tool_result(tool_result)
 
                     success = bool(tool_result.get("success"))
@@ -188,9 +213,7 @@ class GlobeTrotterAgent:
                             "success": success,
                         }
                     )
-                    step_label = f"{tool_name}{'✓' if success else '✗'}"
-                    workflow_steps.append(step_label)
-
+                    workflow_steps.append(f"{tool_name}{'✓' if success else '✗'}")
                     state.add_tool_result(tool_call_id, tool_name, result_text)
 
                     logger.info(
@@ -200,22 +223,16 @@ class GlobeTrotterAgent:
                         success,
                     )
 
+                # Refresh system prompt if metadata gained trip/stop ids mid-loop
+                system_prompt = _system_prompt_with_memory(state.metadata)
+
+            save_conversation(cid)
             total_latency = time.perf_counter() - started
             fallback = (
                 "I made progress with several tool steps but hit the step limit. "
                 "Here is what completed: "
-                + (
-                    " → ".join(workflow_steps)
-                    if workflow_steps
-                    else "(no tools succeeded)"
-                )
+                + (" → ".join(workflow_steps) if workflow_steps else "(no tools succeeded)")
                 + ". Please ask a more focused follow-up so I can finish."
-            )
-            logger.warning(
-                "AGENT_MAX_ROUNDS request_id=%s steps=%s latency=%.3fs",
-                rid,
-                workflow_steps,
-                total_latency,
             )
             return AgentResult(
                 success=True,
@@ -231,9 +248,11 @@ class GlobeTrotterAgent:
                     "total_tokens": total_input_tokens + total_output_tokens,
                 },
                 workflow_steps=workflow_steps,
+                message_count=len(state.messages),
             )
 
         except LLMServiceError as exc:
+            save_conversation(cid)
             total_latency = time.perf_counter() - started
             logger.error("AGENT_FAILED request_id=%s error=%s", rid, str(exc))
             return AgentResult(
@@ -246,8 +265,10 @@ class GlobeTrotterAgent:
                 tool_calls_made=tool_calls_log,
                 error=str(exc),
                 workflow_steps=workflow_steps,
+                message_count=len(state.messages),
             )
         except Exception as exc:  # noqa: BLE001
+            save_conversation(cid)
             total_latency = time.perf_counter() - started
             logger.exception("AGENT_FAILED request_id=%s unexpected=%s", rid, str(exc))
             return AgentResult(
@@ -260,6 +281,7 @@ class GlobeTrotterAgent:
                 tool_calls_made=tool_calls_log,
                 error=f"Unexpected agent error: {exc}",
                 workflow_steps=workflow_steps,
+                message_count=len(state.messages),
             )
         finally:
             set_access_token(None)
