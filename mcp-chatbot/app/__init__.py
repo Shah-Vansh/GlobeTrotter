@@ -1,0 +1,3 @@
+"""GlobeTrotter MCP AI Chatbot application package."""
+
+__version__ = "0.1.0"
