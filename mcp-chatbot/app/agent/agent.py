@@ -1,8 +1,12 @@
 """
-GlobeTrotter agent – Phase 4/5.
+GlobeTrotter agent – Phases 4–6.
 
-Orchestrates LLM tool calling against existing GlobeTrotter APIs.
-Authenticated tools use the request-scoped JWT (same privileges as frontend).
+Multi-step agentic loop:
+  User message
+    → Groq + tool schemas
+    → sequential tool calls (search → create_trip → add_stop → …)
+    → compact tool results fed back
+    → final natural-language answer
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from app.agent.prompts import SYSTEM_PROMPT
+from app.agent.result_utils import compact_tool_result
 from app.agent.state import get_or_create_conversation
 from app.agent.tools_schema import TOOL_IMPLEMENTATIONS, get_tool_schemas
 from app.services.llm_service import LLMServiceError, get_llm_service
@@ -23,7 +28,8 @@ from app.utils.logger import get_logger, get_ai_logger
 logger = get_logger(__name__)
 ai_logger = get_ai_logger()
 
-MAX_TOOL_ROUNDS = 8
+# Enough room for: search cities → details → activities → create trip → stops → itinerary
+MAX_TOOL_ROUNDS = 10
 
 
 @dataclass
@@ -37,6 +43,7 @@ class AgentResult:
     tool_calls_made: list[dict[str, Any]] = field(default_factory=list)
     usage: dict[str, int] = field(default_factory=dict)
     error: Optional[str] = None
+    workflow_steps: list[str] = field(default_factory=list)
 
 
 class GlobeTrotterAgent:
@@ -56,7 +63,6 @@ class GlobeTrotterAgent:
         cid = conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
         started = time.perf_counter()
 
-        # Propagate JWT to authenticated tools for this request
         set_access_token(access_token)
 
         logger.info(
@@ -79,6 +85,7 @@ class GlobeTrotterAgent:
         total_input_tokens = 0
         total_output_tokens = 0
         tool_calls_log: list[dict[str, Any]] = []
+        workflow_steps: list[str] = []
 
         try:
             for round_idx in range(MAX_TOOL_ROUNDS):
@@ -108,12 +115,19 @@ class GlobeTrotterAgent:
                     total_latency = time.perf_counter() - started
 
                     logger.info(
-                        "AGENT_SUCCESS request_id=%s rounds=%d tools=%d latency=%.3fs",
+                        "AGENT_SUCCESS request_id=%s rounds=%d tools=%d steps=%s latency=%.3fs",
                         rid,
                         round_idx + 1,
                         len(tool_calls_log),
+                        " → ".join(workflow_steps) if workflow_steps else "(none)",
                         total_latency,
                     )
+                    ai_logger.info(
+                        "AGENT_WORKFLOW request_id=%s path=%s",
+                        rid,
+                        " → ".join(workflow_steps) if workflow_steps else "(text-only)",
+                    )
+
                     return AgentResult(
                         success=True,
                         request_id=rid,
@@ -127,6 +141,7 @@ class GlobeTrotterAgent:
                             "output_tokens": total_output_tokens,
                             "total_tokens": total_input_tokens + total_output_tokens,
                         },
+                        workflow_steps=workflow_steps,
                     )
 
                 state.add_assistant(
@@ -155,30 +170,52 @@ class GlobeTrotterAgent:
                         tool_name,
                         arguments,
                     )
+                    ai_logger.info(
+                        "AGENT_TOOL_CALL request_id=%s tool=%s",
+                        rid,
+                        tool_name,
+                    )
 
                     tool_result = await self._execute_tool(tool_name, arguments)
-                    result_text = json.dumps(tool_result, default=str)
+                    # Compact payload so multi-step chains stay within context limits
+                    result_text = compact_tool_result(tool_result)
 
+                    success = bool(tool_result.get("success"))
                     tool_calls_log.append(
                         {
                             "tool": tool_name,
                             "arguments": arguments,
-                            "success": tool_result.get("success", False),
+                            "success": success,
                         }
                     )
+                    step_label = f"{tool_name}{'✓' if success else '✗'}"
+                    workflow_steps.append(step_label)
+
                     state.add_tool_result(tool_call_id, tool_name, result_text)
 
                     logger.info(
                         "AGENT_TOOL_RESULT request_id=%s tool=%s success=%s",
                         rid,
                         tool_name,
-                        tool_result.get("success"),
+                        success,
                     )
 
             total_latency = time.perf_counter() - started
             fallback = (
-                "I reached the maximum number of tool steps while processing your request. "
-                "Please try a more specific question."
+                "I made progress with several tool steps but hit the step limit. "
+                "Here is what completed: "
+                + (
+                    " → ".join(workflow_steps)
+                    if workflow_steps
+                    else "(no tools succeeded)"
+                )
+                + ". Please ask a more focused follow-up so I can finish."
+            )
+            logger.warning(
+                "AGENT_MAX_ROUNDS request_id=%s steps=%s latency=%.3fs",
+                rid,
+                workflow_steps,
+                total_latency,
             )
             return AgentResult(
                 success=True,
@@ -193,6 +230,7 @@ class GlobeTrotterAgent:
                     "output_tokens": total_output_tokens,
                     "total_tokens": total_input_tokens + total_output_tokens,
                 },
+                workflow_steps=workflow_steps,
             )
 
         except LLMServiceError as exc:
@@ -207,6 +245,7 @@ class GlobeTrotterAgent:
                 total_latency_seconds=round(total_latency, 3),
                 tool_calls_made=tool_calls_log,
                 error=str(exc),
+                workflow_steps=workflow_steps,
             )
         except Exception as exc:  # noqa: BLE001
             total_latency = time.perf_counter() - started
@@ -220,6 +259,7 @@ class GlobeTrotterAgent:
                 total_latency_seconds=round(total_latency, 3),
                 tool_calls_made=tool_calls_log,
                 error=f"Unexpected agent error: {exc}",
+                workflow_steps=workflow_steps,
             )
         finally:
             set_access_token(None)
