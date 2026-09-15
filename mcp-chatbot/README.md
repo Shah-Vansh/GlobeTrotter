@@ -1,93 +1,78 @@
 # GlobeTrotter MCP AI Chatbot
 
-Natural-language interface over the existing GlobeTrotter application using **MCP + Groq (`openai/gpt-oss-120b`) + FastAPI**.
+Natural-language interface over existing GlobeTrotter APIs via **Groq (`openai/gpt-oss-120b`) + MCP-style tools + FastAPI**.
 
-> **Core rule**: Chatbot capability = existing frontend capability. Tools only wrap real APIs. No invented features.
+> Chatbot capability = frontend capability. No invented features.
 
-## Auth model
+## Multi-step workflows (Phase 6)
+
+The agent can chain tools, for example:
 
 ```
-Frontend JWT  →  Authorization: Bearer <token>  →  /api/chat  →  agent  →  tools  →  same backend APIs
+search_destinations → get_destination_details → search_activities
+  → create_trip → add_stop_to_trip → add_activity_to_itinerary → get_trip_budget
 ```
 
-The chatbot never gets more privilege than the logged-in user.
+Improvements in Phase 6:
+- Workflow patterns documented in the system prompt
+- Up to **10** tool rounds per request
+- Large tool payloads compacted (top N items) to keep context healthy
+- `workflow_steps` returned in API responses and logs (`search_destinations✓ → create_trip✓ → …`)
 
-## Implemented tools (Phase 5)
+## Auth
 
-**Public**
-| Tool | API |
-|------|-----|
-| `search_destinations` | `GET /api/cities` |
-| `get_destination_details` | `GET /api/cities/{id}` |
-| `search_activities` | `GET /api/activities` |
-| `get_activity_details` | `GET /api/activities/{id}` |
+```
+Authorization: Bearer <access_token from POST /api/auth/login>
+```
 
-**Authenticated (JWT required)**
-| Tool | API |
-|------|-----|
-| `list_trips` | `GET /api/trips` |
-| `create_trip` | `POST /api/trips` |
-| `get_trip` | `GET /api/trips/{id}` |
-| `update_trip` | `PUT /api/trips/{id}` |
-| `delete_trip` | `DELETE /api/trips/{id}` |
-| `get_trip_budget` | `GET /api/trips/{id}/budget` |
-| `share_trip` / `unshare_trip` | `POST .../share` / `unshare` |
-| `add_stop_to_trip` | `POST .../stops` |
-| `update_stop` / `remove_stop` | `PUT/DELETE .../stops/{id}` |
-| `reorder_stops` | `PUT .../stops/reorder` |
-| `list_itinerary` | `GET .../itinerary` |
-| `add_activity_to_itinerary` | `POST .../itinerary` |
-| `update_itinerary_activity` | `PUT .../itinerary/{id}` |
-| `remove_activity_from_itinerary` | `DELETE .../itinerary/{id}` |
+Without a token: public destination/activity tools only.  
+With a token: same privileges as that user on the Flask backend.
+
+## Tools
+
+Public: `search_destinations`, `get_destination_details`, `search_activities`, `get_activity_details`  
+Auth: trips, stops, itinerary, budget, share/unshare (full matrix in `docs/CAPABILITY_MATRIX.md`)
 
 ## Phases
 
-- [x] Phase 0–4
-- [x] **Phase 5 – Full trip/itinerary API → tools + JWT**
-- [ ] Phase 6 – Richer multi-tool workflows polish
-- [ ] Phase 7 – Durable conversation memory
-- [ ] Phase 8 – Observability polish
-- [ ] Phase 9 – Frontend Chat UI
-- [ ] Phase 10 – Production readiness
+- [x] 0–5 Foundation, MCP tools, Groq, agent, full trip mapping + JWT
+- [x] **6 – Agentic multi-tool workflows**
+- [ ] 7 – Durable conversation memory
+- [ ] 8 – Observability polish
+- [ ] 9 – Frontend Chat UI
+- [ ] 10 – Production readiness
 
-## Quick start
+## Run
 
 ```bash
-cd mcp-chatbot
-source venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # GROQ_API_KEY + GLOBETROTTER_API_URL
-
-# Terminal 1: Flask backend
-# Terminal 2:
+cd mcp-chatbot && source venv/bin/activate
 uvicorn app.main:app --reload --port 8001
 ```
 
-### Public query
+### Public multi-step
 
 ```bash
 curl -X POST http://127.0.0.1:8001/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "Search destinations related to Goa"}'
+  -d '{"message":"Find beach-related destinations and suggest highly rated activities"}'
 ```
 
-### Authenticated query (use token from POST /api/auth/login)
+### Authenticated multi-step (plan a trip)
 
 ```bash
+# token from: POST http://localhost:5000/api/auth/login  {"username":"alice","password":"Password@123"}
+
 curl -X POST http://127.0.0.1:8001/api/chat \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
-  -d '{"message": "Create a 5-day Goa trip starting 2026-12-01 and list my trips"}'
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -d '{"message":"Search Goa, create a trip Goa Escape 2026-12-01 to 2026-12-05, add a stop, and list my trips"}'
 ```
 
-Demo users from seed: `alice` / `Password@123`
+Response includes `workflow_steps` and `tool_calls_made`.
 
-### CLI agent
+### CLI workflow tests
 
 ```bash
-python -m scripts.test_agent "Find highly rated activities"
+python -m scripts.test_workflow
+ACCESS_TOKEN=eyJ... python -m scripts.test_workflow
 ```
-
-## Logging
-
-Every request logs `request_id`, tool names, API endpoints, latency, tokens, and errors to terminal + `logs/`.
