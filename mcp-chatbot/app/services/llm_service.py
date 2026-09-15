@@ -1,5 +1,5 @@
 """
-Groq LLM service for GlobeTrotter MCP Chatbot (Phase 3).
+Groq LLM service for GlobeTrotter MCP Chatbot (Phase 3+).
 
 Uses the Groq API with model openai/gpt-oss-120b.
 Every request records:
@@ -72,7 +72,7 @@ class LLMService:
 
     async def chat(
         self,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         *,
         temperature: float = 0.3,
         max_tokens: Optional[int] = 2048,
@@ -84,40 +84,29 @@ class LLMService:
         """
         Send a chat completion request to Groq.
 
-        Args:
-            messages: OpenAI-compatible message list (role/content).
-            temperature: Sampling temperature.
-            max_tokens: Maximum tokens to generate.
-            tools: Optional tool/function schemas (used from Phase 4).
-            tool_choice: Optional tool_choice directive.
-            request_id: Correlation ID; generated if omitted.
-            system_prompt: Optional system message prepended to messages.
-
-        Returns:
-            LLMResponse with content, usage, latency, etc.
-
-        Raises:
-            LLMServiceError on provider / network failures.
+        messages may include tool / assistant tool_call roles (Phase 4).
         """
         rid = request_id or self._new_request_id()
         start = time.perf_counter()
 
-        final_messages = list(messages)
+        final_messages: list[dict[str, Any]] = list(messages)
         if system_prompt:
             final_messages = [{"role": "system", "content": system_prompt}] + final_messages
 
         logger.info(
-            "LLM_REQUEST request_id=%s provider=%s model=%s messages=%d",
+            "LLM_REQUEST request_id=%s provider=%s model=%s messages=%d tools=%s",
             rid,
             self.provider,
             self.model,
             len(final_messages),
+            bool(tools),
         )
         ai_logger.info(
-            "LLM_REQUEST request_id=%s provider=%s model=%s",
+            "LLM_REQUEST request_id=%s provider=%s model=%s tools=%s",
             rid,
             self.provider,
             self.model,
+            bool(tools),
         )
 
         kwargs: dict[str, Any] = {
@@ -174,19 +163,26 @@ class LLMService:
                 usage.input_tokens + usage.output_tokens
             )
 
+        has_tools = bool(
+            choice
+            and getattr(choice.message, "tool_calls", None)
+        )
+
         logger.info(
             "LLM_RESPONSE request_id=%s latency=%.3fs "
-            "input_tokens=%d output_tokens=%d total_tokens=%d finish_reason=%s",
+            "input_tokens=%d output_tokens=%d total_tokens=%d "
+            "finish_reason=%s tool_calls=%s",
             rid,
             latency,
             usage.input_tokens,
             usage.output_tokens,
             usage.total_tokens,
             finish_reason,
+            has_tools,
         )
         ai_logger.info(
             "LLM_USAGE request_id=%s provider=%s model=%s "
-            "input_tokens=%d output_tokens=%d total_tokens=%d latency=%.3fs",
+            "input_tokens=%d output_tokens=%d total_tokens=%d latency=%.3fs tool_calls=%s",
             rid,
             self.provider,
             self.model,
@@ -194,6 +190,7 @@ class LLMService:
             usage.output_tokens,
             usage.total_tokens,
             latency,
+            has_tools,
         )
 
         return LLMResponse(
@@ -232,7 +229,6 @@ class LLMService:
         )
 
 
-# Module-level singleton
 _llm_service: Optional[LLMService] = None
 
 
