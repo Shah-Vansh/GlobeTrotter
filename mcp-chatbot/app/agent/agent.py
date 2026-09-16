@@ -1,7 +1,6 @@
 """
-GlobeTrotter agent – Phases 4–7.
-
-Multi-step agentic loop with conversation memory.
+GlobeTrotter agent – multi-step tool loop with conversation memory
+and navigation hints for the existing React routes.
 """
 
 from __future__ import annotations
@@ -13,6 +12,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+from app.agent.navigation import extract_navigation
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.result_utils import compact_tool_result
 from app.agent.state import get_or_create_conversation, save_conversation
@@ -40,6 +40,7 @@ class AgentResult:
     error: Optional[str] = None
     workflow_steps: list[str] = field(default_factory=list)
     message_count: int = 0
+    navigation: Optional[dict[str, Any]] = None
 
 
 def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
@@ -123,6 +124,7 @@ class GlobeTrotterAgent:
         total_output_tokens = 0
         tool_calls_log: list[dict[str, Any]] = []
         workflow_steps: list[str] = []
+        navigation: Optional[dict[str, Any]] = None
         system_prompt = _system_prompt_with_memory(state.metadata)
 
         try:
@@ -154,13 +156,13 @@ class GlobeTrotterAgent:
                     total_latency = time.perf_counter() - started
 
                     logger.info(
-                        "AGENT_SUCCESS request_id=%s rounds=%d tools=%d steps=%s latency=%.3fs messages=%d",
+                        "AGENT_SUCCESS request_id=%s rounds=%d tools=%d steps=%s nav=%s latency=%.3fs",
                         rid,
                         round_idx + 1,
                         len(tool_calls_log),
                         " → ".join(workflow_steps) if workflow_steps else "(none)",
+                        navigation.get("path") if navigation else None,
                         total_latency,
-                        len(state.messages),
                     )
 
                     return AgentResult(
@@ -178,6 +180,7 @@ class GlobeTrotterAgent:
                         },
                         workflow_steps=workflow_steps,
                         message_count=len(state.messages),
+                        navigation=navigation,
                     )
 
                 state.add_assistant(
@@ -221,6 +224,16 @@ class GlobeTrotterAgent:
                     workflow_steps.append(f"{tool_name}{'✓' if success else '✗'}")
                     state.add_tool_result(tool_call_id, tool_name, result_text)
 
+                    nav = extract_navigation(tool_name, arguments, tool_result)
+                    if nav:
+                        navigation = nav
+                        logger.info(
+                            "NAVIGATION request_id=%s path=%s tool=%s",
+                            rid,
+                            nav.get("path"),
+                            tool_name,
+                        )
+
                     logger.info(
                         "AGENT_TOOL_RESULT request_id=%s tool=%s success=%s",
                         rid,
@@ -253,6 +266,7 @@ class GlobeTrotterAgent:
                 },
                 workflow_steps=workflow_steps,
                 message_count=len(state.messages),
+                navigation=navigation,
             )
 
         except LLMServiceError as exc:
@@ -270,6 +284,7 @@ class GlobeTrotterAgent:
                 error=str(exc),
                 workflow_steps=workflow_steps,
                 message_count=len(state.messages),
+                navigation=navigation,
             )
         except Exception as exc:  # noqa: BLE001
             save_conversation(cid)
@@ -286,6 +301,7 @@ class GlobeTrotterAgent:
                 error=f"Unexpected agent error: {exc}",
                 workflow_steps=workflow_steps,
                 message_count=len(state.messages),
+                navigation=navigation,
             )
         finally:
             set_access_token(None)
