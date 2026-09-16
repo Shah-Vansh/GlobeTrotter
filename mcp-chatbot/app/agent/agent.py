@@ -43,7 +43,23 @@ class AgentResult:
     navigation: Optional[dict[str, Any]] = None
 
 
-def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
+def _build_system_prompt(metadata: dict[str, Any], authenticated: bool) -> str:
+    """System prompt + auth status + session memory."""
+    if authenticated:
+        auth_block = (
+            "\n\n## Current session\n"
+            "- User is AUTHENTICATED (valid JWT is attached to every tool call).\n"
+            "- Call list_trips / create_trip / add_stop_to_trip and other trip tools directly.\n"
+            "- Do NOT ask the user to log in.\n"
+        )
+    else:
+        auth_block = (
+            "\n\n## Current session\n"
+            "- User is NOT authenticated (no JWT).\n"
+            "- Public tools (search destinations/activities) work.\n"
+            "- For trip create/list/update, tell them to log in first; do not invent trips.\n"
+        )
+
     extra_parts: list[str] = []
     if metadata.get("last_trip_id") is not None:
         extra_parts.append(f"last_trip_id={metadata['last_trip_id']}")
@@ -53,17 +69,17 @@ def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
     if recent:
         extra_parts.append("recent_tools=" + ",".join(recent[-8:]))
 
-    if not extra_parts:
-        return SYSTEM_PROMPT
+    memory_block = ""
+    if extra_parts:
+        memory_block = (
+            "\n\n## Session memory (from this conversation)\n"
+            "Use these ids when the user refers to 'that trip' or continues a plan:\n"
+            "- "
+            + "\n- ".join(extra_parts)
+            + "\n"
+        )
 
-    return (
-        SYSTEM_PROMPT
-        + "\n\n## Session memory (from this conversation)\n"
-        + "Use these ids when the user refers to 'that trip' or continues a plan:\n"
-        + "- "
-        + "\n- ".join(extra_parts)
-        + "\n"
-    )
+    return SYSTEM_PROMPT + auth_block + memory_block
 
 
 def _sanitize_tool_args(arguments: Any) -> dict:
@@ -91,21 +107,22 @@ class GlobeTrotterAgent:
         rid = request_id or f"req_{uuid.uuid4().hex[:8]}"
         cid = conversation_id or f"conv_{uuid.uuid4().hex[:8]}"
         started = time.perf_counter()
+        authenticated = bool(access_token and str(access_token).strip())
 
-        set_access_token(access_token)
+        set_access_token(access_token if authenticated else None)
 
         logger.info(
             "AGENT_START request_id=%s conversation_id=%s authenticated=%s message=%s",
             rid,
             cid,
-            bool(access_token),
+            authenticated,
             user_message[:120],
         )
         ai_logger.info(
             "AGENT_START request_id=%s conversation_id=%s authenticated=%s",
             rid,
             cid,
-            bool(access_token),
+            authenticated,
         )
 
         state = get_or_create_conversation(cid)
@@ -125,15 +142,19 @@ class GlobeTrotterAgent:
         tool_calls_log: list[dict[str, Any]] = []
         workflow_steps: list[str] = []
         navigation: Optional[dict[str, Any]] = None
-        system_prompt = _system_prompt_with_memory(state.metadata)
+        system_prompt = _build_system_prompt(state.metadata, authenticated)
 
         try:
             for round_idx in range(MAX_TOOL_ROUNDS):
+                # Re-set token each round (ContextVar safety across awaits)
+                set_access_token(access_token if authenticated else None)
+
                 logger.info(
-                    "AGENT_ROUND request_id=%s round=%d messages=%d",
+                    "AGENT_ROUND request_id=%s round=%d messages=%d auth=%s",
                     rid,
                     round_idx + 1,
                     len(state.messages),
+                    authenticated,
                 )
 
                 llm_result = await self.llm.chat(
@@ -203,11 +224,15 @@ class GlobeTrotterAgent:
                     arguments = _sanitize_tool_args(tc["arguments"])
                     tool_call_id = tc["id"]
 
+                    # Ensure token is set before every tool execution
+                    set_access_token(access_token if authenticated else None)
+
                     logger.info(
-                        "AGENT_TOOL_CALL request_id=%s tool=%s args=%s",
+                        "AGENT_TOOL_CALL request_id=%s tool=%s args=%s auth=%s",
                         rid,
                         tool_name,
                         arguments,
+                        authenticated,
                     )
 
                     tool_result = await self._execute_tool(tool_name, arguments)
@@ -241,7 +266,7 @@ class GlobeTrotterAgent:
                         success,
                     )
 
-                system_prompt = _system_prompt_with_memory(state.metadata)
+                system_prompt = _build_system_prompt(state.metadata, authenticated)
 
             save_conversation(cid)
             total_latency = time.perf_counter() - started
