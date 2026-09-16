@@ -6,6 +6,7 @@ Multi-step agentic loop with conversation memory.
 
 from __future__ import annotations
 
+import inspect
 import json
 import time
 import uuid
@@ -65,7 +66,6 @@ def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
 
 
 def _sanitize_tool_args(arguments: Any) -> dict:
-    """Drop null/None keys so Python defaults apply."""
     if not isinstance(arguments, dict):
         return {}
     return {k: v for k, v in arguments.items() if v is not None}
@@ -77,7 +77,6 @@ class GlobeTrotterAgent:
 
     @property
     def tool_schemas(self) -> list[dict[str, Any]]:
-        # Fresh schemas each call (avoids stale cache after code reload)
         return get_tool_schemas()
 
     async def run(
@@ -329,7 +328,13 @@ class GlobeTrotterAgent:
         if impl is None:
             return {"success": False, "error": f"Unknown tool: {name}"}
         try:
-            return await impl(**arguments)
+            sig = inspect.signature(impl)
+            allowed = {
+                k: v
+                for k, v in arguments.items()
+                if k in sig.parameters and v is not None
+            }
+            return await impl(**allowed)
         except TypeError as exc:
             return {"success": False, "error": f"Invalid arguments for {name}: {exc}"}
         except Exception as exc:  # noqa: BLE001
