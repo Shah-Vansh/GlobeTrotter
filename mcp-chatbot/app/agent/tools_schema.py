@@ -1,5 +1,8 @@
 """
 OpenAI / Groq compatible tool schemas for the agent loop.
+
+Optional fields use type [T, "null"] so Groq accepts model outputs that
+pass null instead of omitting the key (common with tool-calling models).
 """
 
 from __future__ import annotations
@@ -51,16 +54,30 @@ TOOL_IMPLEMENTATIONS: dict[str, Callable[..., Awaitable[dict]]] = {
 }
 
 
+def _str(**extra: Any) -> dict:
+    return {"type": ["string", "null"], **extra}
+
+
+def _int(**extra: Any) -> dict:
+    return {"type": ["integer", "null"], **extra}
+
+
+def _num(**extra: Any) -> dict:
+    return {"type": ["number", "null"], **extra}
+
+
 def _fn(name: str, description: str, properties: dict, required: list[str] | None = None) -> dict:
     return {
         "type": "function",
         "function": {
             "name": name,
-            "description": description,
+            "description": description
+            + " Omit optional parameters entirely when unused; do not invent values.",
             "parameters": {
                 "type": "object",
                 "properties": properties,
                 "required": required or [],
+                "additionalProperties": False,
             },
         },
     }
@@ -68,22 +85,18 @@ def _fn(name: str, description: str, properties: dict, required: list[str] | Non
 
 def get_tool_schemas() -> list[dict[str, Any]]:
     return [
-        # Public
         _fn(
             "search_destinations",
             "Search cities/destinations in GlobeTrotter.",
             {
-                "search": {"type": "string"},
-                "country": {"type": "string"},
-                "region": {"type": "string"},
-                "min_cost": {"type": "number"},
-                "max_cost": {"type": "number"},
-                "sort_by": {
-                    "type": "string",
-                    "enum": ["name", "popularity", "cost_index", "country"],
-                },
-                "order": {"type": "string", "enum": ["asc", "desc"]},
-                "group_by": {"type": "string", "enum": ["region", "country"]},
+                "search": _str(),
+                "country": _str(),
+                "region": _str(),
+                "min_cost": _num(),
+                "max_cost": _num(),
+                "sort_by": _str(enum=["name", "popularity", "cost_index", "country"]),
+                "order": _str(enum=["asc", "desc"]),
+                "group_by": _str(enum=["region", "country"]),
             },
         ),
         _fn(
@@ -96,18 +109,15 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             "search_activities",
             "Search activities; optionally filter by city_id, category, cost, rating.",
             {
-                "search": {"type": "string"},
-                "city_id": {"type": "integer"},
-                "category": {"type": "string"},
-                "min_cost": {"type": "number"},
-                "max_cost": {"type": "number"},
-                "min_rating": {"type": "number"},
-                "sort_by": {
-                    "type": "string",
-                    "enum": ["name", "cost", "rating", "duration_minutes"],
-                },
-                "order": {"type": "string", "enum": ["asc", "desc"]},
-                "group_by": {"type": "string", "enum": ["category"]},
+                "search": _str(),
+                "city_id": _int(),
+                "category": _str(),
+                "min_cost": _num(),
+                "max_cost": _num(),
+                "min_rating": _num(),
+                "sort_by": _str(enum=["name", "cost", "rating", "duration_minutes"]),
+                "order": _str(enum=["asc", "desc"]),
+                "group_by": _str(enum=["category"]),
             },
         ),
         _fn(
@@ -116,22 +126,15 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             {"activity_id": {"type": "integer"}},
             ["activity_id"],
         ),
-        # Auth required – trips
         _fn(
             "list_trips",
             "List the logged-in user's trips. Requires authentication.",
             {
-                "search": {"type": "string"},
-                "status": {
-                    "type": "string",
-                    "enum": ["ongoing", "upcoming", "completed"],
-                },
-                "sort_by": {
-                    "type": "string",
-                    "enum": ["start_date", "name", "created_at"],
-                },
-                "order": {"type": "string", "enum": ["asc", "desc"]},
-                "group_by": {"type": "string", "enum": ["status"]},
+                "search": _str(),
+                "status": _str(enum=["ongoing", "upcoming", "completed"]),
+                "sort_by": _str(enum=["start_date", "name", "created_at"]),
+                "order": _str(enum=["asc", "desc"]),
+                "group_by": _str(enum=["status"]),
             },
         ),
         _fn(
@@ -141,7 +144,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
                 "name": {"type": "string"},
                 "start_date": {"type": "string", "description": "YYYY-MM-DD"},
                 "end_date": {"type": "string", "description": "YYYY-MM-DD"},
-                "description": {"type": "string"},
+                "description": _str(),
             },
             ["name", "start_date", "end_date"],
         ),
@@ -156,10 +159,10 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             "Update trip name/description/dates. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
-                "name": {"type": "string"},
-                "description": {"type": "string"},
-                "start_date": {"type": "string"},
-                "end_date": {"type": "string"},
+                "name": _str(),
+                "description": _str(),
+                "start_date": _str(),
+                "end_date": _str(),
             },
             ["trip_id"],
         ),
@@ -174,7 +177,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             "Get budget breakdown by category and day. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
-                "daily_budget": {"type": "number"},
+                "daily_budget": _num(),
             },
             ["trip_id"],
         ),
@@ -190,7 +193,6 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             {"trip_id": {"type": "integer"}},
             ["trip_id"],
         ),
-        # Stops
         _fn(
             "add_stop_to_trip",
             "Add a city stop to a trip. Requires auth.",
@@ -199,7 +201,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
                 "city_id": {"type": "integer"},
                 "start_date": {"type": "string"},
                 "end_date": {"type": "string"},
-                "order_index": {"type": "integer"},
+                "order_index": _int(),
             },
             ["trip_id", "city_id", "start_date", "end_date"],
         ),
@@ -209,9 +211,9 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             {
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
-                "city_id": {"type": "integer"},
-                "start_date": {"type": "string"},
-                "end_date": {"type": "string"},
+                "city_id": _int(),
+                "start_date": _str(),
+                "end_date": _str(),
             },
             ["trip_id", "stop_id"],
         ),
@@ -229,14 +231,10 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             "Reorder stops; order is a list of stop_id values. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
-                "order": {
-                    "type": "array",
-                    "items": {"type": "integer"},
-                },
+                "order": {"type": "array", "items": {"type": "integer"}},
             },
             ["trip_id", "order"],
         ),
-        # Itinerary
         _fn(
             "list_itinerary",
             "List day-wise itinerary for a stop. Requires auth.",
@@ -254,10 +252,10 @@ def get_tool_schemas() -> list[dict[str, Any]]:
                 "stop_id": {"type": "integer"},
                 "activity_id": {"type": "integer"},
                 "day_number": {"type": "integer"},
-                "date": {"type": "string", "description": "YYYY-MM-DD"},
-                "start_time": {"type": "string", "description": "HH:MM"},
-                "cost": {"type": "number"},
-                "notes": {"type": "string"},
+                "date": _str(description="YYYY-MM-DD"),
+                "start_time": _str(description="HH:MM"),
+                "cost": _num(),
+                "notes": _str(),
             },
             ["trip_id", "stop_id", "activity_id", "day_number"],
         ),
@@ -268,13 +266,13 @@ def get_tool_schemas() -> list[dict[str, Any]]:
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
                 "entry_id": {"type": "integer"},
-                "day_number": {"type": "integer"},
-                "date": {"type": "string"},
-                "start_time": {"type": "string"},
-                "cost": {"type": "number"},
-                "notes": {"type": "string"},
-                "order_index": {"type": "integer"},
-                "new_stop_id": {"type": "integer"},
+                "day_number": _int(),
+                "date": _str(),
+                "start_time": _str(),
+                "cost": _num(),
+                "notes": _str(),
+                "order_index": _int(),
+                "new_stop_id": _int(),
             },
             ["trip_id", "stop_id", "entry_id"],
         ),
