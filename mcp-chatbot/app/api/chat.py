@@ -1,7 +1,7 @@
 """
 Chat API routes.
 
-- POST /api/chat       – full agent (multi-step tools + memory), optional Bearer JWT
+- POST /api/chat       – full agent + optional navigation to existing app routes
 - POST /api/chat/test  – LLM only (no tools)
 """
 
@@ -47,6 +47,7 @@ class ChatResponse(BaseModel):
     tool_calls_made: list[dict[str, Any]] = Field(default_factory=list)
     workflow_steps: list[str] = Field(default_factory=list)
     message_count: int = 0
+    navigation: Optional[dict[str, Any]] = None
     error: Optional[str] = None
 
 
@@ -115,10 +116,11 @@ async def chat(
         )
 
     logger.info(
-        "REQUEST_SUCCESS request_id=%s tools=%d workflow=%s messages=%d latency=%.3fs",
+        "REQUEST_SUCCESS request_id=%s tools=%d workflow=%s nav=%s messages=%d latency=%.3fs",
         result.request_id,
         len(result.tool_calls_made),
         " → ".join(result.workflow_steps) if result.workflow_steps else "(none)",
+        (result.navigation or {}).get("path"),
         result.message_count,
         result.total_latency_seconds,
     )
@@ -135,6 +137,7 @@ async def chat(
         tool_calls_made=result.tool_calls_made,
         workflow_steps=result.workflow_steps,
         message_count=result.message_count,
+        navigation=result.navigation,
     )
 
 
@@ -189,4 +192,5 @@ async def chat_test(body: ChatRequest):
         tool_calls_made=[],
         workflow_steps=[],
         message_count=1,
+        navigation=None,
     )
