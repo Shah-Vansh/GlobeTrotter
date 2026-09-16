@@ -1,11 +1,7 @@
 """
 GlobeTrotter agent – Phases 4–7.
 
-Multi-step agentic loop with conversation memory:
-  User message (conversation_id)
-    → load prior messages + metadata
-    → Groq + tools
-    → persist updated conversation
+Multi-step agentic loop with conversation memory.
 """
 
 from __future__ import annotations
@@ -46,7 +42,6 @@ class AgentResult:
 
 
 def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
-    """Append session context so the model can reuse trip/stop ids across turns."""
     extra_parts: list[str] = []
     if metadata.get("last_trip_id") is not None:
         extra_parts.append(f"last_trip_id={metadata['last_trip_id']}")
@@ -67,6 +62,13 @@ def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
         + "\n- ".join(extra_parts)
         + "\n"
     )
+
+
+def _sanitize_tool_args(arguments: dict) -> dict:
+    """Drop keys whose value is None so Python defaults apply."""
+    if not isinstance(arguments, dict):
+        return {}
+    return {k: v for k, v in arguments.items() if v is not None}
 
 
 class GlobeTrotterAgent:
@@ -192,7 +194,7 @@ class GlobeTrotterAgent:
 
                 for tc in tool_calls:
                     tool_name = tc["name"]
-                    arguments = tc["arguments"]
+                    arguments = _sanitize_tool_args(tc["arguments"])
                     tool_call_id = tc["id"]
 
                     logger.info(
@@ -223,7 +225,6 @@ class GlobeTrotterAgent:
                         success,
                     )
 
-                # Refresh system prompt if metadata gained trip/stop ids mid-loop
                 system_prompt = _system_prompt_with_memory(state.metadata)
 
             save_conversation(cid)
@@ -305,6 +306,8 @@ class GlobeTrotterAgent:
                     args = json.loads(args_raw)
                 except json.JSONDecodeError:
                     args = {}
+                if not isinstance(args, dict):
+                    args = {}
                 parsed.append(
                     {
                         "id": tc.id,
@@ -334,6 +337,7 @@ _agent: Optional[GlobeTrotterAgent] = None
 
 def get_agent() -> GlobeTrotterAgent:
     global _agent
+    # Rebuild agent so tool schemas pick up code changes under --reload
     if _agent is None:
         _agent = GlobeTrotterAgent()
     return _agent
