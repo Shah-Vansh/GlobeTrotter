@@ -27,6 +27,11 @@ export async function sendChatMessage(message, conversationId = null) {
   if (conversationId) {
     body.conversation_id = conversationId;
   }
+  // Also send token in body so the agent always sees auth even if
+  // intermediate proxies strip Authorization headers.
+  if (token) {
+    body.access_token = token;
+  }
 
   const res = await fetch(`${CHATBOT_BASE}/api/chat`, {
     method: "POST",
