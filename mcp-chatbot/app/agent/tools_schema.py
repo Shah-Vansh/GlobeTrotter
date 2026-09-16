@@ -1,12 +1,9 @@
 """
-OpenAI / Groq compatible tool schemas for the agent loop.
+OpenAI / Groq compatible tool schemas.
 
-Groq strictly validates tool arguments. Optional enum fields fail when the
-model passes null. Strategy:
-- Required fields: strict types (and enums only when required).
-- Optional filters: plain string/number/integer, OR omitted from schema
-  entirely when Python defaults are enough (e.g. list_trips).
-- Agent still strips nulls before calling implementations.
+Groq validates generated tool arguments strictly. Avoid optional+enum fields
+(null fails enum checks). Prefer required-only or simple optional strings.
+list_trips has no parameters — call with {}.
 """
 
 from __future__ import annotations
@@ -74,7 +71,6 @@ def _fn(
                 "type": "object",
                 "properties": props,
                 "required": required or [],
-                "additionalProperties": False,
             },
         },
     }
@@ -82,12 +78,11 @@ def _fn(
 
 def get_tool_schemas() -> list[dict[str, Any]]:
     return [
-        # ---- Public ----
         _fn(
             "search_destinations",
-            "Search cities/destinations. Optional: search, country, region text filters.",
+            "Search cities/destinations. Optional filters: search, country, region.",
             {
-                "search": {"type": "string", "description": "Free-text search query"},
+                "search": {"type": "string"},
                 "country": {"type": "string"},
                 "region": {"type": "string"},
             },
@@ -100,7 +95,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "search_activities",
-            "Search activities. Optional: search text, city_id, category.",
+            "Search activities. Optional: search, city_id, category.",
             {
                 "search": {"type": "string"},
                 "city_id": {"type": "integer"},
@@ -113,16 +108,15 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             {"activity_id": {"type": "integer"}},
             ["activity_id"],
         ),
-        # ---- Auth: trips ----
-        # No optional params: model must call with {}. Python applies defaults.
         _fn(
             "list_trips",
-            "List the logged-in user's trips. Call with empty arguments {}. Requires auth.",
+            "List the logged-in user's trips. Requires authentication. "
+            "Always call this tool with an empty JSON object as arguments: {}.",
             {},
         ),
         _fn(
             "create_trip",
-            "Create a trip. Dates must be YYYY-MM-DD. Requires auth.",
+            "Create a trip. Dates YYYY-MM-DD. Requires auth.",
             {
                 "name": {"type": "string"},
                 "start_date": {"type": "string", "description": "YYYY-MM-DD"},
@@ -139,7 +133,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "update_trip",
-            "Update trip fields. Only pass fields you want to change. Requires auth.",
+            "Update trip fields. Pass only fields to change. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "name": {"type": "string"},
@@ -151,13 +145,13 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "delete_trip",
-            "Delete a trip owned by the user. Requires auth.",
+            "Delete a trip. Requires auth.",
             {"trip_id": {"type": "integer"}},
             ["trip_id"],
         ),
         _fn(
             "get_trip_budget",
-            "Get budget breakdown for a trip. Requires auth.",
+            "Get budget for a trip. Requires auth.",
             {"trip_id": {"type": "integer"}},
             ["trip_id"],
         ),
@@ -173,21 +167,20 @@ def get_tool_schemas() -> list[dict[str, Any]]:
             {"trip_id": {"type": "integer"}},
             ["trip_id"],
         ),
-        # ---- Stops ----
         _fn(
             "add_stop_to_trip",
             "Add a city stop to a trip. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "city_id": {"type": "integer"},
-                "start_date": {"type": "string", "description": "YYYY-MM-DD"},
-                "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                "start_date": {"type": "string"},
+                "end_date": {"type": "string"},
             },
             ["trip_id", "city_id", "start_date", "end_date"],
         ),
         _fn(
             "update_stop",
-            "Update a stop. Only pass fields to change. Requires auth.",
+            "Update a stop. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
@@ -199,7 +192,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "remove_stop",
-            "Remove a stop from a trip. Requires auth.",
+            "Remove a stop. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
@@ -208,17 +201,16 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "reorder_stops",
-            "Reorder stops; order is an array of stop_id integers. Requires auth.",
+            "Reorder stops; order is array of stop ids. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "order": {"type": "array", "items": {"type": "integer"}},
             },
             ["trip_id", "order"],
         ),
-        # ---- Itinerary ----
         _fn(
             "list_itinerary",
-            "List day-wise itinerary for a stop. Requires auth.",
+            "List itinerary for a stop. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
@@ -227,14 +219,14 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "add_activity_to_itinerary",
-            "Add an activity to a stop's itinerary. Requires auth.",
+            "Add activity to itinerary. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
                 "activity_id": {"type": "integer"},
                 "day_number": {"type": "integer"},
-                "date": {"type": "string", "description": "YYYY-MM-DD"},
-                "start_time": {"type": "string", "description": "HH:MM"},
+                "date": {"type": "string"},
+                "start_time": {"type": "string"},
                 "cost": {"type": "number"},
                 "notes": {"type": "string"},
             },
@@ -242,7 +234,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "update_itinerary_activity",
-            "Update or move an itinerary entry. Requires auth.",
+            "Update itinerary entry. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
@@ -257,7 +249,7 @@ def get_tool_schemas() -> list[dict[str, Any]]:
         ),
         _fn(
             "remove_activity_from_itinerary",
-            "Remove an activity from the itinerary. Requires auth.",
+            "Remove activity from itinerary. Requires auth.",
             {
                 "trip_id": {"type": "integer"},
                 "stop_id": {"type": "integer"},
