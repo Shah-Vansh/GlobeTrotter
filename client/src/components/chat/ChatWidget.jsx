@@ -1,13 +1,12 @@
 /**
  * components/chat/ChatWidget.jsx
  * Floating chat panel for the GlobeTrotter MCP AI assistant.
- * - Sends messages to FastAPI chatbot with the user's JWT
- * - Maintains conversation_id for multi-turn memory
- * - Only shows inside authenticated MainLayout
+ * Assistant replies are rendered as Markdown (GFM tables, bold, lists, etc.).
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, X, Send, Loader2, Trash2, Bot } from "lucide-react";
 import { sendChatMessage } from "../../lib/chatApi";
+import MarkdownMessage from "./MarkdownMessage";
 
 const STORAGE_KEY = "gt_chat_conversation_id";
 
@@ -25,7 +24,7 @@ export default function ChatWidget() {
     {
       role: "assistant",
       content:
-        "Hi! I'm the GlobeTrotter assistant. I can search destinations & activities, and manage your trips using the same APIs as the app. How can I help?",
+        "Hi! I'm the **GlobeTrotter** assistant. I can search destinations & activities, and manage your trips using the same APIs as the app. How can I help?",
     },
   ]);
   const [conversationId, setConversationId] = useState(() =>
@@ -54,7 +53,8 @@ export default function ChatWidget() {
     setMessages([
       {
         role: "assistant",
-        content: "Conversation cleared. Ask me anything about destinations, activities, or your trips.",
+        content:
+          "Conversation cleared. Ask me anything about destinations, activities, or your trips.",
       },
     ]);
     setError(null);
@@ -110,7 +110,6 @@ export default function ChatWidget() {
 
   return (
     <>
-      {/* Floating action button */}
       <button
         type="button"
         aria-label={open ? "Close chat" : "Open chat"}
@@ -120,13 +119,11 @@ export default function ChatWidget() {
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>
 
-      {/* Panel */}
       {open && (
         <div
-          className="fixed bottom-22 right-5 z-50 flex w-[min(100vw-1.5rem,24rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-          style={{ bottom: "5.5rem", maxHeight: "min(70vh, 32rem)" }}
+          className="fixed right-5 z-50 flex w-[min(100vw-1.5rem,26rem)] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          style={{ bottom: "5.5rem", maxHeight: "min(75vh, 36rem)" }}
         >
-          {/* Header */}
           <div className="flex items-center justify-between gap-2 border-b border-slate-200 bg-indigo-600 px-4 py-3 text-white dark:border-slate-700">
             <div className="flex items-center gap-2 min-w-0">
               <Bot className="h-5 w-5 shrink-0" />
@@ -147,7 +144,6 @@ export default function ChatWidget() {
             </button>
           </div>
 
-          {/* Messages */}
           <div className="flex-1 space-y-3 overflow-y-auto px-3 py-3 text-sm">
             {messages.map((m, i) => (
               <div
@@ -157,15 +153,19 @@ export default function ChatWidget() {
                 }`}
               >
                 <div
-                  className={`max-w-[85%] rounded-2xl px-3 py-2 whitespace-pre-wrap ${
+                  className={`max-w-[92%] rounded-2xl px-3 py-2 ${
                     m.role === "user"
-                      ? "bg-indigo-600 text-white rounded-br-md"
+                      ? "bg-indigo-600 text-white rounded-br-md whitespace-pre-wrap"
                       : m.isError
                         ? "bg-red-50 text-red-800 dark:bg-red-950/40 dark:text-red-200 rounded-bl-md"
                         : "bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-100 rounded-bl-md"
                   }`}
                 >
-                  {m.content}
+                  {m.role === "assistant" && !m.isError ? (
+                    <MarkdownMessage content={m.content} />
+                  ) : (
+                    m.content
+                  )}
                   {m.meta?.workflow_steps?.length > 0 && (
                     <p className="mt-1.5 text-[10px] opacity-70 border-t border-black/10 dark:border-white/10 pt-1">
                       {m.meta.workflow_steps.join(" → ")}
@@ -185,7 +185,6 @@ export default function ChatWidget() {
               </div>
             )}
 
-            {/* Suggestions on first screen */}
             {messages.length <= 1 && !loading && (
               <div className="flex flex-wrap gap-1.5 pt-1">
                 {SUGGESTIONS.map((s) => (
@@ -204,7 +203,6 @@ export default function ChatWidget() {
             <div ref={bottomRef} />
           </div>
 
-          {/* Input */}
           <div className="border-t border-slate-200 p-2 dark:border-slate-700">
             {error && (
               <p className="mb-1 px-1 text-[11px] text-red-600 dark:text-red-400">
