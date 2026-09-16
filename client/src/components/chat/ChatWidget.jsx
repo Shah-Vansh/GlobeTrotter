@@ -1,9 +1,10 @@
 /**
  * components/chat/ChatWidget.jsx
- * Floating chat panel for the GlobeTrotter MCP AI assistant.
- * Assistant replies are rendered as Markdown (GFM tables, bold, lists, etc.).
+ * Floating chat panel. On create/add tool success, navigates to an
+ * existing app route (e.g. /trips/:id) — no new pages.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { MessageCircle, X, Send, Loader2, Trash2, Bot } from "lucide-react";
 import { sendChatMessage } from "../../lib/chatApi";
 import MarkdownMessage from "./MarkdownMessage";
@@ -18,6 +19,7 @@ const SUGGESTIONS = [
 ];
 
 export default function ChatWidget() {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState([
@@ -74,6 +76,8 @@ export default function ChatWidget() {
       if (data.conversation_id) {
         persistConversationId(data.conversation_id);
       }
+
+      const nav = data.navigation;
       setMessages((prev) => [
         ...prev,
         {
@@ -82,9 +86,18 @@ export default function ChatWidget() {
           meta: {
             workflow_steps: data.workflow_steps,
             latency: data.latency_seconds,
+            navigation: nav || null,
           },
         },
       ]);
+
+      // Redirect to existing app page after create/add (trip detail, etc.)
+      if (nav?.path && typeof nav.path === "string") {
+        // Small delay so the user can see the reply briefly
+        setTimeout(() => {
+          navigate(nav.path);
+        }, 400);
+      }
     } catch (err) {
       const msg = err.message || "Something went wrong talking to the assistant.";
       setError(msg);
@@ -165,6 +178,15 @@ export default function ChatWidget() {
                     <MarkdownMessage content={m.content} />
                   ) : (
                     m.content
+                  )}
+                  {m.meta?.navigation?.path && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(m.meta.navigation.path)}
+                      className="mt-2 block w-full rounded-lg bg-indigo-600 px-2 py-1.5 text-center text-[11px] font-medium text-white hover:bg-indigo-500"
+                    >
+                      {m.meta.navigation.label || "Open page"} →
+                    </button>
                   )}
                   {m.meta?.workflow_steps?.length > 0 && (
                     <p className="mt-1.5 text-[10px] opacity-70 border-t border-black/10 dark:border-white/10 pt-1">
