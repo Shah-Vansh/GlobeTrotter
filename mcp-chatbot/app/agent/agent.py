@@ -64,8 +64,8 @@ def _system_prompt_with_memory(metadata: dict[str, Any]) -> str:
     )
 
 
-def _sanitize_tool_args(arguments: dict) -> dict:
-    """Drop keys whose value is None so Python defaults apply."""
+def _sanitize_tool_args(arguments: Any) -> dict:
+    """Drop null/None keys so Python defaults apply."""
     if not isinstance(arguments, dict):
         return {}
     return {k: v for k, v in arguments.items() if v is not None}
@@ -74,7 +74,11 @@ def _sanitize_tool_args(arguments: dict) -> dict:
 class GlobeTrotterAgent:
     def __init__(self):
         self.llm = get_llm_service()
-        self.tool_schemas = get_tool_schemas()
+
+    @property
+    def tool_schemas(self) -> list[dict[str, Any]]:
+        # Fresh schemas each call (avoids stale cache after code reload)
+        return get_tool_schemas()
 
     async def run(
         self,
@@ -337,7 +341,6 @@ _agent: Optional[GlobeTrotterAgent] = None
 
 def get_agent() -> GlobeTrotterAgent:
     global _agent
-    # Rebuild agent so tool schemas pick up code changes under --reload
     if _agent is None:
         _agent = GlobeTrotterAgent()
     return _agent
