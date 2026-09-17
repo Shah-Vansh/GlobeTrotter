@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -26,6 +27,15 @@ ai_logger = get_ai_logger()
 
 MAX_TOOL_ROUNDS = 10
 
+# Light heuristics to remember personal facts across turns
+_NAME_PATTERNS = [
+    re.compile(
+        r"\b(?:my name is|i am|i'm|this is|call me)\s+([A-Z][a-zA-Z'\\-]{1,30})\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"\b(?:name['’]?s)\s+([A-Z][a-zA-Z'\\-]{1,30})\b", re.IGNORECASE),
+]
+
 
 @dataclass
 class AgentResult:
@@ -43,8 +53,24 @@ class AgentResult:
     navigation: Optional[dict[str, Any]] = None
 
 
+def _extract_user_facts(message: str, metadata: dict[str, Any]) -> None:
+    """Update metadata with durable facts (e.g. name) from the user message."""
+    if not message or not isinstance(metadata, dict):
+        return
+    for pat in _NAME_PATTERNS:
+        m = pat.search(message.strip())
+        if m:
+            name = m.group(1).strip()
+            # Skip common false positives
+            if name.lower() in {"the", "a", "an", "looking", "planning", "here", "there"}:
+                continue
+            metadata["user_name"] = name
+            logger.info("MEMORY_FACT user_name=%s", name)
+            break
+
+
 def _build_system_prompt(metadata: dict[str, Any], authenticated: bool) -> str:
-    """System prompt + auth status + session memory."""
+    """System prompt + auth status + session memory (name, trip ids)."""
     if authenticated:
         auth_block = (
             "\n\n## Current session\n"
@@ -61,6 +87,10 @@ def _build_system_prompt(metadata: dict[str, Any], authenticated: bool) -> str:
         )
 
     extra_parts: list[str] = []
+    if metadata.get("user_name"):
+        extra_parts.append(
+            f"user_name={metadata['user_name']} (address them by name when natural)"
+        )
     if metadata.get("last_trip_id") is not None:
         extra_parts.append(f"last_trip_id={metadata['last_trip_id']}")
     if metadata.get("last_stop_id") is not None:
@@ -72,8 +102,8 @@ def _build_system_prompt(metadata: dict[str, Any], authenticated: bool) -> str:
     memory_block = ""
     if extra_parts:
         memory_block = (
-            "\n\n## Session memory (from this conversation)\n"
-            "Use these ids when the user refers to 'that trip' or continues a plan:\n"
+            "\n\n## Session memory (persists for this conversation until cleared)\n"
+            "Remember and use these facts; do not ask for them again if already known:\n"
             "- "
             + "\n- ".join(extra_parts)
             + "\n"
@@ -128,6 +158,7 @@ class GlobeTrotterAgent:
         state = get_or_create_conversation(cid)
         prior_count = len(state.messages)
         state.add_user(user_message)
+        _extract_user_facts(user_message, state.metadata)
 
         logger.info(
             "MEMORY request_id=%s conversation_id=%s prior_messages=%d metadata=%s",
@@ -146,7 +177,6 @@ class GlobeTrotterAgent:
 
         try:
             for round_idx in range(MAX_TOOL_ROUNDS):
-                # Re-set token each round (ContextVar safety across awaits)
                 set_access_token(access_token if authenticated else None)
 
                 logger.info(
@@ -224,7 +254,6 @@ class GlobeTrotterAgent:
                     arguments = _sanitize_tool_args(tc["arguments"])
                     tool_call_id = tc["id"]
 
-                    # Ensure token is set before every tool execution
                     set_access_token(access_token if authenticated else None)
 
                     logger.info(
